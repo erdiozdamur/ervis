@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: ervis_db
+    environment:
+      POSTGRES_USER: ervis
+      POSTGRES_PASSWORD: ervis_password # Varsayılan geliştirme şifresi
+      POSTGRES_DB: ervis_core
+    ports:
+      - "5432:5432"
+    volumes:
+      - ervis_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  ervis_pgdata:

@@ -1,0 +1,138 @@
+import os
+import uuid
+import json
+from typing import Optional, List, Dict, Any
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from models import Task
+
+load_dotenv(override=True)
+_client: Optional[AsyncOpenAI] = None
+
+def get_openai_client() -> AsyncOpenAI:
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is missing. Please set it in the .env file.")
+        _client = AsyncOpenAI(api_key=api_key)
+    return _client
+
+# 1. TOOL FUNCTIONS (Real Persistence)
+async def create_task(user_id: uuid.UUID, title: str, description: str, db_session: Session) -> str:
+    print(f"DEBUG: create_task called for user {user_id}, title: {title}")
+    new_task = Task(
+        user_id=user_id,
+        title=title,
+        description=description,
+        status="pending"
+    )
+    db_session.add(new_task)
+    db_session.commit()
+    print(f"DEBUG: Task '{title}' committed to DB.")
+    return f"Görev '{title}' başarıyla oluşturuldu ve kaydedildi."
+
+async def show_tasks(user_id: uuid.UUID, db_session: Session, filter_keyword: Optional[str] = None) -> str:
+    stmt = select(Task).where(Task.user_id == user_id, Task.status == "pending")
+    if filter_keyword:
+        stmt = stmt.where(Task.title.ilike(f"%{filter_keyword}%"))
+    
+    tasks = db_session.execute(stmt).scalars().all()
+    
+    if not tasks:
+        return "Şu an kayıtlı bekleyen bir hatırlatıcınız veya göreviniz bulunmuyor."
+        
+    task_list = "\n".join([f"- {t.title}: {t.description or ''}" for t in tasks])
+    return f"Bekleyen görevleriniz:\n{task_list}"
+
+async def control_device(user_id: uuid.UUID, device_name: str, state: str) -> str:
+    # still mock as we don't have smart home integration yet
+    return f"Cihaz '{device_name}' durumu '{state}' olarak başarıyla güncellendi."
+
+# 2. OPENAI TOOL SCHEMAS
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_task",
+            "description": "Kullanıcı için yeni bir görev (task) veya iş listesi öğesi oluşturur.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Görevin başlığı."},
+                    "description": {"type": "string", "description": "Görevin detaylı açıklaması."}
+                },
+                "required": ["title", "description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_tasks",
+            "description": "Kullanıcının kayıtlı olan tüm görevlerini (tasks) ve hatırlatıcılarını listeler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filter_keyword": {"type": "string", "description": "Belirli bir kelimeye göre filtreleme yapmak için kullanılır (isteğe bağlı)."}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "control_device",
+            "description": "Evdeki akıllı cihazları (ışık, klima, tv vb.) kontrol eder.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Kontrol edilecek cihazın adı (örn. 'salon ışığı', 'klima')."},
+                    "state": {"type": "string", "description": "Cihazın istenen durumu (örn. 'açık', 'kapalı', '24 derece')."}
+                },
+                "required": ["device_name", "state"]
+            }
+        }
+    }
+]
+
+# 3. TOOL EXECUTION LOGIC
+async def execute_tool_for_user(user_id: uuid.UUID, user_input: str, db_session: Session) -> tuple[str, str]:
+    client = get_openai_client()
+    
+    system_prompt = """Sen Ervis'in araç kullanım katmanısın. Kullanıcının isteğine göre uygun aracı seç ve çalıştır.
+HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim", "listele", "göster", "neler var?", "var mı?" gibi ifadeler kullanırsa mutlaka 'show_tasks' aracını çağır."""
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input}
+        ],
+        tools=TOOLS,
+        tool_choice="auto"
+    )
+    
+    message = response.choices[0].message
+    
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            
+            if function_name == "create_task":
+                print(f"DEBUG: Dispatching to create_task with args: {arguments}")
+                result = await create_task(user_id=user_id, db_session=db_session, **arguments)
+                return result, response.model
+            elif function_name == "show_tasks":
+                print(f"DEBUG: Dispatching to show_tasks with args: {arguments}")
+                result = await show_tasks(user_id=user_id, db_session=db_session, **arguments)
+                return result, response.model
+            elif function_name == "control_device":
+                result = await control_device(user_id, **arguments)
+                return result, response.model
+                
+    return "Bu işlem için uygun bir araç bulunamadı veya anlaşılamadı.", response.model
