@@ -3,20 +3,18 @@ version: '3.8'
 services:
   db:
     image: ankane/pgvector:latest
-    container_name: ervis_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ervis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ervis_password}
       POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
     volumes:
-      - ervis_pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: ervis_backend
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis_password}@db:5432/${POSTGRES_DB:-ervis_core}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -29,10 +27,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.frontend
-    container_name: ervis_frontend
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
-  ervis_pgdata:
+  pgdata:
