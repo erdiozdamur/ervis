@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
         formData.append('password', password);
 
         try {
-            const response = await axios.post('http://localhost:8000/api/auth/login', formData);
+            const response = await axios.post('/api/auth/login', formData);
             const { access_token, user_id, username } = response.data;
             
             const userData = { user_id, username, email };
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
 
     const register = async (username, email, password) => {
         try {
-            await axios.post('http://localhost:8000/api/auth/register', {
+            await axios.post('/api/auth/register', {
                 username,
                 email,
                 password

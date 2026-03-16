@@ -18,7 +18,7 @@ import { useAuth, AuthProvider } from './context/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
 
-const API_URL = 'http://localhost:8000/api/chat';
+const API_URL = '/api/chat';
 
 function ChatInterface() {
   const { user, logout } = useAuth();
