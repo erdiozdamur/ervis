@@ -27,7 +27,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         # Passlib might have stored it as a string, checkpw needs bytes
         if isinstance(hashed_password, str):
             hashed_password = hashed_password.encode()
-        return bcrypt.checkpw(_pre_hash(plain_password), hashed_password)
+        
+        # Try new hashing method (with pre-hash)
+        if bcrypt.checkpw(_pre_hash(plain_password), hashed_password):
+            return True
+            
+        # Fallback to legacy hashing method (without pre-hash)
+        # This allows existing users to login
+        return bcrypt.checkpw(plain_password.encode(), hashed_password)
     except Exception:
         return False
 
