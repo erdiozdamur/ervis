@@ -10,7 +10,7 @@ load_dotenv(override=True)
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
@@ -21,7 +21,7 @@ from services.tool_agent import execute_tool_for_user
 from services.cache_service import check_cache, save_to_cache, clear_user_cache, delete_stale_cache, check_dynamic_status
 from services.web_search_agent import search_the_web
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
-from models import User
+from models import User, Base
 
 # Database Setup
 DATABASE_URL = os.getenv(
@@ -30,6 +30,19 @@ DATABASE_URL = os.getenv(
 )
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Auto-create tables on startup (safe for production - only creates if not exists)
+def _init_database():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.commit()
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database schema verified/created successfully.")
+    except Exception as e:
+        print(f"⚠️ Database init warning: {e}")
+
+_init_database()
 
 def get_db():
     db = SessionLocal()
