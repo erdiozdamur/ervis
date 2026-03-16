@@ -8,8 +8,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ervis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ervis_password}
       POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
-    ports:
-      - "5432:5432"
     volumes:
       - ervis_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -32,8 +30,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     container_name: ervis_frontend
-    ports:
-      - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
