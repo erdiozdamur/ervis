@@ -3,6 +3,8 @@ import uuid
 import json
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 from models import Task
 
 # load_dotenv is handled globally in api.py
