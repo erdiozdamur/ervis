@@ -3,10 +3,8 @@ from enum import Enum
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
 # Load environment variables (e.g., OPENAI_API_KEY)
-load_dotenv(override=True)
+# load_dotenv is handled globally in api.py
 
 # Avoid immediate instantiation to prevent crash if API_KEY is missing during startup
 _client: Optional[AsyncOpenAI] = None

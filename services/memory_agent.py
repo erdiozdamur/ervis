@@ -6,11 +6,9 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
-from dotenv import load_dotenv
-
 from models import Entity, Relation
 
-load_dotenv(override=True)
+# load_dotenv is handled globally in api.py
 
 _client: Optional[AsyncOpenAI] = None
 

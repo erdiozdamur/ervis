@@ -3,13 +3,9 @@ import uuid
 import json
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 from models import Task
 
-load_dotenv(override=True)
+# load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
 
 def get_openai_client() -> AsyncOpenAI:

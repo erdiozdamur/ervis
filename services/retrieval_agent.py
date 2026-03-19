@@ -4,12 +4,10 @@ from typing import Optional
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
 from models import Entity, Relation
 
+# load_dotenv is handled globally in api.py
 # Reuse the lazy client initialization pattern from other services
-load_dotenv(override=True)
 _client: Optional[AsyncOpenAI] = None
 
 def get_openai_client() -> AsyncOpenAI:

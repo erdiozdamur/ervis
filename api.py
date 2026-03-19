@@ -4,8 +4,10 @@ import traceback
 from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
-# Load environment variables before other imports
-load_dotenv(override=True)
+# Load environment variables before other imports.
+# In Docker/Production, we rely on system environment variables.
+if os.path.exists(".env"):
+    load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware

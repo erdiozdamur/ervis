@@ -5,11 +5,9 @@ from typing import Optional, List
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
 from models import QueryCache
 
-load_dotenv(override=True)
+# load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
 
 def get_openai_client() -> AsyncOpenAI:
