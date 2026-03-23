@@ -60,6 +60,24 @@ export const AuthProvider = ({ children }) => {
         delete axios.defaults.headers.common['Authorization'];
     };
 
+    // Global Axios interceptor for 401 handling
+    useEffect(() => {
+        const interceptor = axios.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error.response?.status === 401) {
+                    console.warn('Session expired or unauthorized. Logging out...');
+                    logout();
+                }
+                return Promise.reject(error);
+            }
+        );
+
+        return () => {
+            axios.interceptors.response.eject(interceptor);
+        };
+    }, []);
+
     return (
         <AuthContext.Provider value={{ user, login, register, logout, loading }}>
             {children}
