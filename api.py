@@ -209,6 +209,9 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             # Default acknowledgment if LLM fails to provide one
             ack = intent_response.suggested_acknowledgment or "Anladım, bu bilgiyi hafızama not ediyorum."
             
+            # Passive observation in parallel to extraction
+            background_tasks.add_task(background_passive_observation, user_id, request.message, ack)
+            
             return ChatResponse(
                 intent=intent_response.intent.value,
                 message=ack,
@@ -219,6 +222,9 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             # 1. Semantic Cache Check (Mandatory Read Bypass inside check_cache)
             cached_response = await check_cache(user_id, request.message, db_session=db)
             if cached_response:
+                # IMPORTANT: Even on cache hit, trigger observation so system learns from context!
+                background_tasks.add_task(background_passive_observation, user_id, request.message, cached_response)
+                
                 return ChatResponse(
                     intent=intent_response.intent.value,
                     message=cached_response,
