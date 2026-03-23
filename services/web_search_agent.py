@@ -34,8 +34,9 @@ async def refine_query(user_query: str) -> str:
             "KURALLAR:\n"
             "1. Soru yerelse Türkçe, küreselse İngilizce anahtar kelimeler seç.\n"
             "2. 'dün', 'bugün' gibi ifadeler yerine tam tarih kullan.\n"
-            "3. HAVA DURUMU/GÜNCEL OLAYLAR: Eğer kullanıcı şehir belirtmemişse 'Türkiye' veya 'Genel' ekle.\n"
-            "4. Sadece sorguyu dön (Örn: 'Bugün hava nasıl' -> 'İstanbul hava durumu 16.03.2026')."
+            "3. HAVA DURUMU/GÜNCEL OLAYLAR: Eğer kullanıcı şehir belirtmemişse 'Türkiye geneli' veya 'Genel' ekle. "
+            "Kullanıcının konumunu (BUGÜNÜN TARİHİ yanında yazan yer değilse bile) tahmin etmeye çalışma. "
+            "4. Sadece sorguyu dön (Örn: 'Bugün hava nasıl' -> 'Türkiye geneli hava durumu 23.03.2026')."
         )
         response = await client.chat.completions.create(
             model="gpt-4o-mini",

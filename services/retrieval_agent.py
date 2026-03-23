@@ -91,10 +91,10 @@ async def retrieve_context(user_id: uuid.UUID, query: str, db_session: Session) 
         
     return "\n".join(context_lines)
 
-async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_context: Optional[str] = None) -> tuple[str, str]:
+async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_context: Optional[str] = None, metadata_context: str = "") -> tuple[str, str]:
     """
     Retrieves context and uses LLM to generate a natural language answer.
-    Includes optional web_context for dynamic queries.
+    Includes optional web_context and metadata_context for better situational awareness.
     """
     context = await retrieve_context(user_id, query, db_session)
     
@@ -102,16 +102,21 @@ async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_
     
     current_date = datetime.now().strftime("%d %B %Y %A")
     web_info = f"\n\n[GÜNCEL İNTERNET BİLGİSİ]:\n{web_context}" if web_context else ""
+    meta_info = f"\n\n{metadata_context}" if metadata_context else ""
     
     system_prompt = f"""Sen Ervis'in akıllı asistanısın. 
-BUGÜNÜN TARİHİ: {current_date}
+BUGÜNÜN TARİHİ: {current_date}{meta_info}
 
-Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] ve özellikle [GÜNCEL İNTERNET BİLGİSİ] verilerini kullan.
+Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] ve [GÜNCEL İNTERNET BİLGİSİ] verilerini kullan.
 
-### KESİN VERİ ÖNCELİĞİ (DATA OVER INTUITION):
-1. İNTERNET BİLGİSİ ÜSTÜNLÜĞÜ: [GÜNCEL İNTERNET BİLGİSİ] sağlanmışsa, kendi eğitim verilerini (halüsinasyonlarını) tamamen DEVRE DIŞI BIRAK. Sadece bu güncel verilere dayanarak konuş.
-2. TARİH HASSASİYETİ: Kullanıcının sorduğu tarihle ({current_date}) internetten gelen verideki tarihin eşleştiğinden emin ol. Eğer internetten gelen bilgiler eski bir tarihe aitse ve bugünü kapsamıyorsa, "Elimdeki güncel veriler [Tarih]'e ait, bugünkü durum henüz yansımamış" gibi dürüst bir cevap ver. Tahmin yürütme.
-3. BAĞLAMSAL HİBRİT: Kullanıcının yerel hafızasıyla internet bilgisini birleştir.
+### BELİRSİZLİK VE EKSİK BİLGİ PROTOKOLÜ (INTELLIGENT AMBIGUITY):
+1. EĞER BİLGİ EKSİKSE (Örn: Şehir belirtilmemiş hava durumu, branş belirtilmemiş spor kıyafeti):
+   - KESİNLİKLE rastgele bir varsayım yapma (Örn: Bilmiyorsan 'Gaziantep' deme).
+   - VARSA [SİSTEM HAFIZASI] ve [SİSTEM BAĞLAMI] (Sıcak Hafıza) verilerini kullanarak en olası tahmini yap ve bunu belirt: "Geçen haftaki tenis sohbetimize dayanarak..."
+   - HİÇBİR İPUCU YOKSA: Genel ve kapsayıcı bir "Temel Cevap" ver, ardından farklı seçenekler için "Dallanmış Öneriler" sun.
+   - ÖRNEK: "Genel spor aktiviteleri için X öneririm, ancak tenis veya yüzme gibi özel bir dal için arıyorsanız belirtin."
+2. İNTERNET BİLGİSİ ÜSTÜNLÜĞÜ: [GÜNCEL İNTERNET BİLGİSİ] sağlanmışsa, sadece bu verilere dayan. 
+3. TARİH HASSASİYETİ: Verinin güncelliğini kontrol et.
 
 Cevaplarını her zaman profesyonel, zeki ve Türkçe olarak ver.
 """

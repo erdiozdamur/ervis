@@ -23,6 +23,7 @@ from services.tool_agent import execute_tool_for_user
 from services.cache_service import check_cache, save_to_cache, clear_user_cache, delete_stale_cache, check_dynamic_status
 from services.web_search_agent import search_the_web
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
+from services.memory_observer import passive_memory_observation
 from models import User, Base
 
 # Database Setup
@@ -100,6 +101,18 @@ async def background_memory_extraction(user_id: uuid.UUID, message: str):
     finally:
         db.close()
 
+async def background_passive_observation(user_id: uuid.UUID, message: str, response: str):
+    """
+    Handles passive memory observation in the background.
+    """
+    db = SessionLocal()
+    try:
+        await passive_memory_observation(user_id, message, response, db)
+    except Exception as e:
+        print(f"Background observation error: {str(e)}")
+    finally:
+        db.close()
+
 # FastAPI Application
 app = FastAPI(title="Ervis Core API", version="1.0.0")
 
@@ -120,6 +133,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     user_id: uuid.UUID = Field(..., description="The UUID of the tenant/user making the request.")
     message: str = Field(..., description="The user's raw text input.")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional situational metadata (e.g., location, time).")
 
 class ChatResponse(BaseModel):
     intent: str
@@ -217,10 +231,21 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
  
             # 3. RAG flow if no cache
             print(f"DEBUG: Entering RAG flow for query knowledge")
-            answer, final_model = await answer_query(user_id, request.message, db_session=db, web_context=web_context)
+            # Extract situational metadata if available
+            meta_str = ""
+            if request.metadata:
+                m = request.metadata
+                loc = m.get("location", {}) or {}
+                city = loc.get("city", "Bilinmiyor")
+                meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
+            
+            answer, final_model = await answer_query(user_id, request.message, db_session=db, web_context=web_context, metadata_context=meta_str)
             
             # 4. Save to cache (Mandatory Write Bypass inside save_to_cache)
             await save_to_cache(user_id, request.message, answer, db_session=db)
+            
+            # 5. Passive Observation
+            background_tasks.add_task(background_passive_observation, user_id, request.message, answer)
             
             return ChatResponse(
                 intent=intent_response.intent.value,
@@ -236,6 +261,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
             # Dual-Track: Even after tool execution, extract memory in background
             background_tasks.add_task(background_memory_extraction, user_id, request.message)
+            background_tasks.add_task(background_passive_observation, user_id, request.message, result)
             
             # Flush relevant cache because system state changed (Smart clearing)
             await clear_user_cache(user_id, db_session=db, hint=request.message)
@@ -247,6 +273,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             )
             
         else: # GENERAL_CHAT
+            background_tasks.add_task(background_passive_observation, user_id, request.message, "Genel sohbet modundasınız. Size nasıl yardımcı olabilirim?")
             return ChatResponse(
                 intent=intent_response.intent.value,
                 message="Genel sohbet modundasınız. Size nasıl yardımcı olabilirim?",

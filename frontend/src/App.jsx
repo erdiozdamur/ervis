@@ -21,11 +21,27 @@ import Register from './components/Register';
 const API_URL = '/api/chat';
 
 function ChatInterface() {
+  const [location, setLocation] = useState(null);
   const { user, logout } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    // Get location implicitly via IP-API (non-intrusive)
+    fetch('https://ipapi.co/json/')
+      .then(res => res.json())
+      .then(data => {
+        setLocation({
+          city: data.city,
+          region: data.region,
+          country: data.country_name
+        });
+        console.log('📍 Implicit location detected:', data.city);
+      })
+      .catch(err => console.error('Location detection failed:', err));
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,9 +66,18 @@ function ChatInterface() {
     setIsLoading(true);
 
     try {
+      const metadata = {
+        location: location,
+        time: new Date().toLocaleTimeString(),
+        day: new Date().toLocaleDateString('tr-TR', { weekday: 'long' }),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        platform: navigator.platform
+      };
+
       const response = await axios.post(API_URL, {
         user_id: user.user_id,
-        message: input
+        message: input,
+        metadata: metadata
       });
 
       const assistantMessage = {
