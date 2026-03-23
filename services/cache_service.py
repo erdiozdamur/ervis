@@ -37,8 +37,11 @@ async def check_dynamic_status(query: str) -> str:
     """
     try:
         client = get_openai_client()
+        current_date = datetime.now().strftime("%d %B %Y %A")
         system_prompt = (
-            "Sen Ervis'in Önbellek Hakemi'sin (Cache Judge). Aşağıdaki sorunun cevabı zamanla değişen dinamik bir bilgi mi "
+            "Sen Ervis'in Önbellek Hakemi'sin (Cache Judge). "
+            f"BUGÜNÜN TARİHİ: {current_date}\n\n"
+            "Aşağıdaki sorunun cevabı zamanla değişen dinamik bir bilgi mi "
             "(hava durumu, saat, güncel haber, borsa, anlık durum vb.) yoksa sabit/kişisel bir gerçeklik mi? "
             "Sadece 'dinamik' veya 'statik' cevabını ver."
         )

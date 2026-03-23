@@ -1,5 +1,5 @@
-import os
 import uuid
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
@@ -99,14 +99,17 @@ async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_
     
     client = get_openai_client()
     
+    current_date = datetime.now().strftime("%d %B %Y %A")
     web_info = f"\n\n[GÜNCEL İNTERNET BİLGİSİ]:\n{web_context}" if web_context else ""
     
-    system_prompt = """Sen Ervis'in akıllı asistanısın. Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] 
-ve özellikle [GÜNCEL İNTERNET BİLGİSİ] verilerini kullan.
+    system_prompt = f"""Sen Ervis'in akıllı asistanısın. 
+BUGÜNÜN TARİHİ: {current_date}
+
+Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] ve özellikle [GÜNCEL İNTERNET BİLGİSİ] verilerini kullan.
 
 ### KESİN VERİ ÖNCELİĞİ (DATA OVER INTUITION):
 1. İNTERNET BİLGİSİ ÜSTÜNLÜĞÜ: [GÜNCEL İNTERNET BİLGİSİ] sağlanmışsa, kendi eğitim verilerini (halüsinasyonlarını) tamamen DEVRE DIŞI BIRAK. Sadece bu güncel verilere dayanarak konuş.
-2. TARİH HASSASİYETİ: Kullanıcının sorduğu tarihle (Örn: Bugün 16 Mart) internetten gelen verideki tarihin eşleştiğinden emin ol. Eğer internetten gelen bilgiler eski bir tarihe (Örn: 14 Mart) aitse ve bugünü kapsamıyorsa, "Elimdeki güncel veriler 14 Mart'a ait, bugünkü durum henüz yansımamış" gibi dürüst bir cevap ver. Tahmin yürütme.
+2. TARİH HASSASİYETİ: Kullanıcının sorduğu tarihle ({current_date}) internetten gelen verideki tarihin eşleştiğinden emin ol. Eğer internetten gelen bilgiler eski bir tarihe aitse ve bugünü kapsamıyorsa, "Elimdeki güncel veriler [Tarih]'e ait, bugünkü durum henüz yansımamış" gibi dürüst bir cevap ver. Tahmin yürütme.
 3. BAĞLAMSAL HİBRİT: Kullanıcının yerel hafızasıyla internet bilgisini birleştir.
 
 Cevaplarını her zaman profesyonel, zeki ve Türkçe olarak ver.

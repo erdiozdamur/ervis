@@ -1,4 +1,5 @@
-import os
+import uuid
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -54,10 +55,11 @@ async def analyze_user_input(user_input: str) -> tuple[IntentResponse, str]:
     confidence score, extracted entities, and reasoning.
     """
     client = get_openai_client()
+    current_date = datetime.now().strftime("%d %B %Y %A")
     response = await client.beta.chat.completions.parse(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nBUGÜNÜN TARİHİ: {current_date}"},
             {"role": "user", "content": user_input}
         ],
         response_format=IntentResponse,
