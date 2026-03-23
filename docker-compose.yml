@@ -15,6 +15,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis_password}@db:5432/${POSTGRES_DB:-ervis_core}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -27,6 +29,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:80"
     depends_on:
       - backend
     restart: unless-stopped

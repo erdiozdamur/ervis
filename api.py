@@ -35,14 +35,24 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Auto-create tables on startup (safe for production - only creates if not exists)
 def _init_database():
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            conn.commit()
-        Base.metadata.create_all(bind=engine)
-        print("✅ Database schema verified/created successfully.")
-    except Exception as e:
-        print(f"⚠️ Database init warning: {e}")
+    import time
+    max_retries = 5
+    retry_delay = 5
+    for attempt in range(max_retries):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                conn.commit()
+            Base.metadata.create_all(bind=engine)
+            print("✅ Database schema verified/created successfully.")
+            return
+        except Exception as e:
+            print(f"⚠️ Database init attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"🔄 Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print("❌ Max retries reached. Database initialization failed.")
 
 _init_database()
 
