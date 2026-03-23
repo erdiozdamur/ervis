@@ -39,12 +39,32 @@ if [ ! -z "$BACKEND_CONTAINER" ]; then
     docker exec -it "$BACKEND_CONTAINER" python -c "from api import _init_database; _init_database()"
 fi
 
-# 3. Verification
+# 3. Create/Reset Primary User (Erdi Özdamur)
+if [ ! -z "$BACKEND_CONTAINER" ]; then
+    echo "👤 Creating/Resetting user: Erdi Özdamur..."
+    if [ -f "reset_db_and_add_user.py" ]; then
+        docker cp reset_db_and_add_user.py "$BACKEND_CONTAINER":/app/reset_db_and_add_user.py
+        docker cp models.py "$BACKEND_CONTAINER":/app/models.py
+        docker cp services/auth_service.py "$BACKEND_CONTAINER":/app/services/auth_service.py
+        docker exec -it "$BACKEND_CONTAINER" python /app/reset_db_and_add_user.py
+    else
+        echo "⚠️ reset_db_and_add_user.py not found locally. Skipping user creation."
+    fi
+fi
+
+# 4. Verification
 if [ ! -z "$BACKEND_CONTAINER" ]; then
     echo "🧪 Running verification test in backend..."
     if [ -f "verify_system.py" ]; then
         docker cp verify_system.py "$BACKEND_CONTAINER":/app/verify_system.py
-        docker exec -it "$BACKEND_CONTAINER" python /app/verify_system.py
+        # Run verification with specific credentials
+        docker exec -it "$BACKEND_CONTAINER" python -c "
+import verify_system
+verify_system.TEST_EMAIL = 'e.ozdamur@gmail.com'
+verify_system.TEST_USER = 'Erdi Özdamur'
+verify_system.TEST_PASS = 'Erdi1903'
+verify_system.verify_all()
+"
     else
         echo "💡 verify_system.py locally not found. Skipping auto-test."
     fi
