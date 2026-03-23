@@ -25,15 +25,16 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
     try:
         client = get_openai_client()
         
-        system_prompt = """Sen Ervis'in Pasif Gözlemci Ajanı'sın. Görevin, kullanıcı ve asistan arasındaki yazışmayı analiz ederek kullanıcının uzun vadeli İLGİ ALANLARINI, TERCİHLERİNİ ve ALIŞKANLIKLARINI tespit etmektir.
+        system_prompt = """Sen Ervis'in Pasif Gözlemci Ajanı'sın. Görevin, kullanıcı ve asistan arasındaki yazışmayı analiz ederek kullanıcının uzun vadeli İLGİ ALANLARINI, TERCİHLERİNİ, ALIŞKANLIKLARINI ve KİMLİK/ROL (Meslek, Uzmanlık, Unvan) bilgilerini tespit etmektir.
         
         KURALLAR:
-        1. Sadece gerçekten belirgin olan ilgi alanlarını çıkar (Örn: Sürekli futbol sahası soruyorsa -> Futbol).
-        2. Çıkardığın her ilgi alanını kısa, öz anahtar kelime olarak belirle (Örn: 'Futbol', 'Yazılım', 'Klasik Müzik').
-        3. Eğer yeni bir bilgi yoksa boş liste dön.
+        1. Belirgin ilgi alanlarını çıkar (Örn: 'Futbol', 'Yazılım').
+        2. KİMLİK VE ROL bilgilerini titizlikle ayıkla (Örn: Kullanıcı 'Ben bir Product Owner'ım' diyorsa -> 'Product Owner').
+        3. Çıkardığın her bilgiyi kısa anahtar kelimeler olarak belirle.
+        4. Eğer yeni bir bilgi yoksa 'NONE' yaz.
         
         ÇIKTI FORMATI: 
-        Sadece virgülle ayrılmış anahtar kelimeler (Örn: Futbol, Teknoloji). Hiçbir şey bulamadıysan 'NONE' yaz.
+        Sadece virgülle ayrılmış anahtar kelimeler (Örn: Product Owner, Futbol, Teknoloji). Hiçbir şey bulamadıysan 'NONE' yaz.
         """
         
         llm_response = await client.chat.completions.create(
@@ -56,15 +57,20 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
         if not user: return
 
         for topic in interests:
-            # 1. Ensure the Topic Entity exists
-            entity_stmt = select(Entity).where(Entity.user_id == user_id, Entity.name == topic, Entity.entity_type == "İlgi Alanı")
+            # Determining the most appropriate entity type
+            # If it's a known role or sounds like a profession, we'll mark it as 'Meslek'
+            is_role = any(kw in topic.lower() for kw in ["owner", "müdür", "manager", "engineer", "doktor", "yazılımcı", "tasarımcı", "analist", "başkan", "öğretmen"])
+            e_type = "Meslek" if is_role else "İlgi Alanı"
+
+            # 1. Ensure the Entity exists
+            entity_stmt = select(Entity).where(Entity.user_id == user_id, Entity.name == topic, or_(Entity.entity_type == "İlgi Alanı", Entity.entity_type == "Meslek"))
             topic_entity = db_session.execute(entity_stmt).scalars().first()
             
             if not topic_entity:
                 topic_entity = Entity(
                     user_id=user_id,
                     name=topic,
-                    entity_type="İlgi Alanı",
+                    entity_type=e_type,
                     attributes={"source": "passive_observation"}
                 )
                 db_session.add(topic_entity)
