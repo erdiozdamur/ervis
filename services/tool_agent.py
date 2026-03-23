@@ -97,7 +97,41 @@ TOOLS = [
     }
 ]
 
-# 3. TOOL EXECUTION LOGIC
+# 3. CONVERSATIONAL REFINER
+async def generate_natural_response(user_input: str, tool_name: str, tool_result: str) -> str:
+    """
+    Generates a natural, human-like response after a tool has been successfully executed.
+    This uses a cheap LLM call to bridge the gap between 'system result' and 'premium assistant'.
+    """
+    client = get_openai_client()
+    
+    system_prompt = """Sen Ervis'sin. Bir aracı (tool) başarıyla çalıştırdın. 
+Görevin: Kullanıcının orijinal isteğini ve aracın sonucunu alıp, kullanıcıya işin bittiğini çok doğal, samimi ve yardımcı bir dille açıklamak.
+
+KURALLAR:
+1. Robotik olma ("işlem başarıyla tamamlandı" gibi ifadelerden kaçın).
+2. Kullanıcının saydığı önemli detayları (örn. kıyma, saat, isim) mutlaka cümlede kullan.
+3. Kısa, öz ve premium bir tonla konuş.
+4. Sadece Türkçe cevap ver.
+"""
+    prompt = f"Kullanıcı İsteği: {user_input}\nÇalıştırılan Araç: {tool_name}\nAraç Sonucu: {tool_result}"
+    
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=150
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Error in generate_natural_response: {e}")
+        return tool_result # Fallback to original mechanical message
+
+# 4. TOOL EXECUTION LOGIC
 async def execute_tool_for_user(user_id: uuid.UUID, user_input: str, db_session: Session) -> tuple[str, str]:
     client = get_openai_client()
     
@@ -121,16 +155,19 @@ HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim"
             function_name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments)
             
+            raw_result = ""
             if function_name == "create_task":
                 print(f"DEBUG: Dispatching to create_task with args: {arguments}")
-                result = await create_task(user_id=user_id, db_session=db_session, **arguments)
-                return result, response.model
+                raw_result = await create_task(user_id=user_id, db_session=db_session, **arguments)
             elif function_name == "show_tasks":
                 print(f"DEBUG: Dispatching to show_tasks with args: {arguments}")
-                result = await show_tasks(user_id=user_id, db_session=db_session, **arguments)
-                return result, response.model
+                raw_result = await show_tasks(user_id=user_id, db_session=db_session, **arguments)
             elif function_name == "control_device":
-                result = await control_device(user_id, **arguments)
-                return result, response.model
+                raw_result = await control_device(user_id, **arguments)
+            
+            if raw_result:
+                # Refine the mechanical raw_result into a natural response
+                natural_response = await generate_natural_response(user_input, function_name, raw_result)
+                return natural_response, response.model
                 
     return "Bu işlem için uygun bir araç bulunamadı veya anlaşılamadı.", response.model
