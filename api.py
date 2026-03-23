@@ -206,9 +206,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             # Flush relevant cache because system knowledge changed (Smart clearing)
             await clear_user_cache(user_id, db_session=db, hint=request.message)
             
+            # Default acknowledgment if LLM fails to provide one
+            ack = intent_response.suggested_acknowledgment or "Anladım, bu bilgiyi hafızama not ediyorum."
+            
             return ChatResponse(
                 intent=intent_response.intent.value,
-                message="Bilgileriniz analiz edilip sisteme kaydediliyor (Arka plan işlemi başlatıldı).",
+                message=ack,
                 model_used=final_model
             )
             
@@ -273,10 +276,11 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             )
             
         else: # GENERAL_CHAT
-            background_tasks.add_task(background_passive_observation, user_id, request.message, "Genel sohbet modundasınız. Size nasıl yardımcı olabilirim?")
+            ack = intent_response.suggested_acknowledgment or "Merhaba! Size nasıl yardımcı olabilirim?"
+            background_tasks.add_task(background_passive_observation, user_id, request.message, ack)
             return ChatResponse(
                 intent=intent_response.intent.value,
-                message="Genel sohbet modundasınız. Size nasıl yardımcı olabilirim?",
+                message=ack,
                 model_used=final_model
             )
             
