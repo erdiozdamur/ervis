@@ -11,11 +11,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        entryFileNames: 'assets/app.js',
+        // Keep these filenames aligned with legacy deployments so mixed
+        // frontend instances behind the same domain don't break module loading.
+        entryFileNames: 'assets/index-CWQ6MAJC.js',
         chunkFileNames: 'assets/chunk-[name].js',
         assetFileNames: (assetInfo) => {
           const name = assetInfo.names && assetInfo.names[0] ? assetInfo.names[0] : assetInfo.name || '';
-          if (name.endsWith('.css')) return 'assets/app.css';
+          if (name.endsWith('.css')) return 'assets/index-CJnW8WFL.css';
           return 'assets/[name][extname]';
         },
       },
