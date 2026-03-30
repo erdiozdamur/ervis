@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260330b" />
+    <link rel="shortcut icon" href="/favicon.svg?v=20260330b" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,6 +15,30 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var KEY = "__ervis_asset_retry__";
+        window.addEventListener(
+          "error",
+          function (event) {
+            var target = event && event.target;
+            if (!target) return;
+            var url = target.src || target.href || "";
+            if (!/\/assets\/.+\.(js|css)(\?.*)?$/.test(url)) return;
+            try {
+              if (sessionStorage.getItem(KEY) === "1") return;
+              sessionStorage.setItem(KEY, "1");
+              var next = new URL(window.location.href);
+              next.searchParams.set("v", String(Date.now()));
+              window.location.replace(next.toString());
+            } catch (_) {
+              // Ignore; normal browser error flow continues.
+            }
+          },
+          true
+        );
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
