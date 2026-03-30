@@ -71,3 +71,39 @@ class Task(Base):
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)  # pending, completed
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False, default="Yeni Oturum")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    last_message_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_conversations_user_last_message_at", "user_id", "last_message_at"),
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(String, nullable=False)  # user | assistant
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    intent: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_chat_messages_user_created_at", "user_id", "created_at"),
+        Index("ix_chat_messages_conversation_created_at", "conversation_id", "created_at"),
+    )

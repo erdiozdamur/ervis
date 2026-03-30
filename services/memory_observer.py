@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
 from models import Entity, Relation, User
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 _client: Optional[AsyncOpenAI] = None
 

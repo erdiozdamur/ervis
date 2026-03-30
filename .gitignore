@@ -9,6 +9,8 @@ vite.log
 
 # Environment
 .env
+.env.*
+!.env.*.example
 
 # Node
 node_modules/

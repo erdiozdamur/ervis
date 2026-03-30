@@ -1,138 +1,155 @@
 import React, { useState } from 'react';
+import { AlertCircle, ArrowRight, Bot, CheckCircle2, Loader2, Sparkles, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Bot, UserPlus, LogIn, Loader2, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 
 const Register = ({ onToggleMode }) => {
-    const { register } = useAuth();
-    const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState(false);
+  const { register } = useAuth();
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError('');
-        
-        const result = await register(username, email, password);
-        if (result.success) {
-            setSuccess(true);
-            setTimeout(() => onToggleMode(), 2000);
-        } else {
-            setError(result.message);
-            setIsLoading(false);
-        }
-    };
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setError('');
 
-    return (
-        <div className="min-h-screen w-full flex items-center justify-center bg-[#0a0a0b] px-4 font-sans relative overflow-hidden">
-            {/* Background elements */}
-            <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[128px] pointer-events-none animate-pulse"></div>
-            <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[128px] pointer-events-none animate-pulse" style={{ animationDelay: '1s' }}></div>
-            
-            <div className="max-w-md w-full z-10 animate-slide-in">
-                <div className="text-center mb-8 md:mb-10">
-                    <div className="inline-flex items-center justify-center w-20 h-20 md:w-24 md:h-24 rounded-[2rem] bg-gradient-to-tr from-purple-600 to-indigo-600 mb-6 shadow-2xl shadow-purple-600/30">
-                        <Bot size={40} className="text-white md:size-48" />
-                    </div>
-                    <h1 className="text-3xl md:text-4xl font-black text-white mb-2 tracking-tight">Ervis'e Katıl</h1>
-                    <p className="text-gray-500 font-light text-sm md:text-base">Kendi otonom hafızanı inşa etmeye başla.</p>
-                </div>
+    const result = await register(username, email, password);
+    if (result.success) {
+      setSuccess(true);
+      setTimeout(() => onToggleMode(), 1800);
+    } else {
+      setError(result.message);
+      setIsLoading(false);
+    }
+  };
 
-                <div className="glass-card p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] border border-white/10 shadow-3xl">
-                    {success ? (
-                        <div className="text-center py-6 md:py-8 space-y-4 md:space-y-6">
-                            <div className="flex justify-center">
-                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-green-500/20 flex items-center justify-center border border-green-500/30">
-                                    <CheckCircle2 size={36} className="text-green-500 animate-bounce md:size-48" />
-                                </div>
-                            </div>
-                            <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Kayıt Başarılı!</h2>
-                            <p className="text-gray-400 font-light text-sm md:text-base">Giriş sayfasına yönlendiriliyorsunuz...</p>
-                        </div>
-                    ) : (
-                        <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6">
-                            {error && (
-                                <div className="flex items-center gap-3 p-3 md:p-4 bg-red-500/10 border border-red-500/20 rounded-xl md:rounded-2xl text-red-400 text-xs md:text-sm animate-shake">
-                                    <AlertCircle size={18} className="shrink-0" />
-                                    {error}
-                                </div>
-                            )}
+  return (
+    <div className="auth-shell relative min-h-[100dvh] overflow-hidden px-4 py-6 sm:px-6 lg:px-10">
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="surface-panel fade-rise rounded-3xl p-6 sm:p-8 lg:p-10">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(107,212,255,0.16)] px-3 py-1 text-xs text-[var(--accent-2)]">
+            <Sparkles size={14} />
+            Build Your Autonomous Memory
+          </div>
 
-                            <div>
-                                <label className="block text-[10px] md:text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2 md:mb-3 ml-2">Ad Soyad</label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-600/30 focus:border-purple-500/50 transition-all duration-300 font-light text-base md:text-lg"
-                                    placeholder="Adınız"
-                                />
-                            </div>
-                            
-                            <div>
-                                <label className="block text-[10px] md:text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2 md:mb-3 ml-2">E-posta Adresi</label>
-                                <input 
-                                    type="email" 
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-600/30 focus:border-purple-500/50 transition-all duration-300 font-light text-base md:text-lg"
-                                    placeholder="ornek@mail.com"
-                                />
-                            </div>
+          <div className="mt-8 max-w-2xl">
+            <h1 className="type-headline text-3xl font-extrabold leading-tight sm:text-5xl">
+              Ervis ağına katıl.
+            </h1>
+            <p className="mt-4 text-sm text-[var(--text-muted)] sm:text-base">
+              Rolünü, hedeflerini ve çalışma stilini öğrenen uzman seviyesinde asistan deneyimi için hesabını oluştur.
+            </p>
+          </div>
 
-                            <div>
-                                <label className="block text-[10px] md:text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2 md:mb-3 ml-2">Şifre</label>
-                                <input 
-                                    type="password" 
-                                    required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-600/30 focus:border-purple-500/50 transition-all duration-300 font-light text-base md:text-lg"
-                                    placeholder="••••••••"
-                                />
-                            </div>
-
-                            <button 
-                                type="submit"
-                                disabled={isLoading}
-                                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 md:py-5 rounded-xl md:rounded-2xl transition-all shadow-xl shadow-purple-600/20 flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50 glow-hover text-base md:text-lg"
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="animate-spin" size={24} />
-                                ) : (
-                                    <>
-                                        <UserPlus size={24} />
-                                        Hesap Oluştur
-                                    </>
-                                )}
-                            </button>
-                        </form>
-                    )}
-                </div>
-
-                <div className="text-center mt-10">
-                    <p className="text-gray-500 font-medium tracking-tight">
-                        Zaten bir hesabın var mı?{' '}
-                        <button 
-                            onClick={onToggleMode}
-                            className="text-purple-400 hover:text-purple-300 font-bold ml-1 transition-colors"
-                        >
-                            Giriş Yap
-                        </button>
-                    </p>
-                    <div className="mt-8 flex items-center justify-center gap-2 text-[10px] text-gray-700 uppercase tracking-widest font-black">
-                        <Sparkles size={12} className="text-purple-900" />
-                        Ervis Autonomous Assistant
-                    </div>
-                </div>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <div className="surface-card rounded-2xl p-4">
+              <p className="type-headline text-sm font-semibold">Kişisel Bilgi Grafiği</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Süreç, tercih ve rol bilgisini birlikte hatırlar.</p>
             </div>
-        </div>
-    );
+            <div className="surface-card rounded-2xl p-4">
+              <p className="type-headline text-sm font-semibold">Operasyonel Hız</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Görev, karar ve yanıt akışını tek panelden yönetirsin.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="surface-panel fade-rise stagger-1 rounded-3xl p-6 sm:p-8">
+          <div className="mb-7 flex items-center gap-3">
+            <div className="rounded-2xl bg-[linear-gradient(135deg,var(--accent-1),var(--accent-2))] p-3 text-slate-950">
+              <Bot size={24} />
+            </div>
+            <div>
+              <p className="type-headline text-lg font-bold">Create Access</p>
+              <p className="text-xs text-[var(--text-muted)]">Yeni kullanıcı kaydı</p>
+            </div>
+          </div>
+
+          {success ? (
+            <div className="surface-card rounded-2xl p-6 text-center">
+              <CheckCircle2 size={42} className="mx-auto text-blue-300" />
+              <p className="type-headline mt-3 text-xl font-bold">Kayıt tamamlandı</p>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">Giriş ekranına yönlendiriliyorsun...</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="rounded-xl border border-sky-300/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
+                  <AlertCircle size={15} className="mr-2 inline" />
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="register-name" className="mb-2 block text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+                  Ad Soyad
+                </label>
+                <input
+                  id="register-name"
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="surface-card h-12 w-full rounded-xl px-4 text-sm outline-none ring-0 placeholder:text-[var(--text-muted)] focus:border-[rgba(126,168,255,0.52)]"
+                  placeholder="Adınız Soyadınız"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="register-email" className="mb-2 block text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+                  E-posta
+                </label>
+                <input
+                  id="register-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="surface-card h-12 w-full rounded-xl px-4 text-sm outline-none ring-0 placeholder:text-[var(--text-muted)] focus:border-[rgba(126,168,255,0.52)]"
+                  placeholder="ornek@mail.com"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="register-password" className="mb-2 block text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+                  Şifre
+                </label>
+                <input
+                  id="register-password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="surface-card h-12 w-full rounded-xl px-4 text-sm outline-none ring-0 placeholder:text-[var(--text-muted)] focus:border-[rgba(126,168,255,0.52)]"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="btn-accent flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm disabled:opacity-60"
+              >
+                {isLoading ? <Loader2 size={18} className="animate-spin" /> : <UserPlus size={18} />}
+                Hesap Oluştur
+              </button>
+            </form>
+          )}
+
+          <button
+            type="button"
+            onClick={onToggleMode}
+            className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[var(--accent-2)] hover:text-blue-200"
+          >
+            Zaten hesabın var mı? Giriş yap
+            <ArrowRight size={15} />
+          </button>
+        </section>
+      </div>
+    </div>
+  );
 };
 
 export default Register;

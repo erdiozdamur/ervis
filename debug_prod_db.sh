@@ -2,6 +2,15 @@
 
 echo "🕵️ Starting Production DB Debugger..."
 
+# Required DB environment variables
+required_vars=(POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB)
+for var in "${required_vars[@]}"; do
+    if [ -z "${!var}" ]; then
+        echo "❌ Missing required environment variable: $var"
+        exit 1
+    fi
+done
+
 # Detect Containers
 DB_CONTAINER=$(docker ps --filter "name=db" --format "{{.Names}}" | head -n 1)
 BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.Names}}" | head -n 1)
@@ -21,23 +30,23 @@ if [ ! -z "$BACKEND_CONTAINER" ]; then
     docker exec "$BACKEND_CONTAINER" env | grep DATABASE_URL
 fi
 
-# Try to Reset Password via Superuser (postgres or ervis)
-echo "🔑 2. Attempting to reset 'ervis' password via multiple superusers..."
+# Try to reset configured DB user password
+echo "🔑 2. Attempting to reset '$POSTGRES_USER' password..."
 
 # Strategy A: Try as 'postgres' superuser
 echo "   - Trying via 'postgres' user..."
-docker exec -it "$DB_CONTAINER" psql -U postgres -d postgres -c "ALTER USER ervis WITH PASSWORD 'ervis_password';" 2>/dev/null
+docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -c "ALTER USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" 2>/dev/null
 
 if [ $? -eq 0 ]; then
     echo "   ✅ Password reset successful via 'postgres' user."
 else
-    # Strategy B: Try as 'ervis' superuser (if it was the initial user)
-    echo "   - Trying via 'ervis' user..."
+    # Strategy B: Try as configured DB user
+    echo "   - Trying via '$POSTGRES_USER' user..."
     # We use a trick: bypass password if we are inside the container and use 'peer' or 'md5' isn't forced for localhost exec
-    docker exec -it "$DB_CONTAINER" psql -U ervis -d ervis_core -c "ALTER USER ervis WITH PASSWORD 'ervis_password';" 2>/dev/null
+    docker exec -i "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" 2>/dev/null
     
     if [ $? -eq 0 ]; then
-        echo "   ✅ Password reset successful via 'ervis' user."
+        echo "   ✅ Password reset successful via '$POSTGRES_USER' user."
     else
         echo "   ❌ Failed to reset password automatically."
         echo "   Manual check: docker exec -it $DB_CONTAINER psql -U <any_user> -d <any_db>"
@@ -46,6 +55,6 @@ fi
 
 # Check if tables exist
 echo "📊 3. Checking if 'users' table exists..."
-docker exec -it "$DB_CONTAINER" psql -U ervis -d ervis_core -c "\dt" | grep users
+docker exec -i "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt" | grep users
 
 echo "🏁 Debugging complete. Please restart the backend and check logs."

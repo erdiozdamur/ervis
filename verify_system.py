@@ -1,13 +1,28 @@
+import os
 import requests
-import uuid
-import time
 
-BASE_URL = "http://localhost:8000"
-TEST_EMAIL = "e.ozdamur@gmail.com"
-TEST_USER = "Erdi Özdamur"
-TEST_PASS = "Erdi1903"
+BASE_URL = os.getenv("ERVIS_BASE_URL", "http://localhost:8000")
+TEST_EMAIL = os.getenv("ERVIS_TEST_EMAIL")
+TEST_USER = os.getenv("ERVIS_TEST_USER")
+TEST_PASS = os.getenv("ERVIS_TEST_PASS")
+
+
+def _require_test_env():
+    missing = []
+    if not TEST_EMAIL:
+        missing.append("ERVIS_TEST_EMAIL")
+    if not TEST_USER:
+        missing.append("ERVIS_TEST_USER")
+    if not TEST_PASS:
+        missing.append("ERVIS_TEST_PASS")
+
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )
 
 def verify_all():
+    _require_test_env()
     print(f"🚀 Starting System Verification for {BASE_URL}")
     
     # 1. Register
