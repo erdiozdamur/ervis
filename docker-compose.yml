@@ -14,6 +14,12 @@ services:
         protocol: tcp
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     restart: unless-stopped
 
   backend:
@@ -26,7 +32,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -39,7 +46,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"

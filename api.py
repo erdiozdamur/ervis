@@ -42,8 +42,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Auto-create tables on startup (safe for production - only creates if not exists)
 def _init_database():
     import time
-    max_retries = 5
-    retry_delay = 5
+    def _local_int_env(name: str, default: int, min_value: int, max_value: int) -> int:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            parsed = int(raw)
+        except ValueError:
+            return default
+        return max(min_value, min(parsed, max_value))
+
+    max_retries = _local_int_env("DB_INIT_MAX_RETRIES", default=24, min_value=3, max_value=120)
+    retry_delay = _local_int_env("DB_INIT_RETRY_DELAY_SECONDS", default=5, min_value=1, max_value=30)
+    last_error = None
     for attempt in range(max_retries):
         try:
             with engine.connect() as conn:
@@ -95,12 +106,14 @@ def _init_database():
             _backfill_legacy_conversations()
             return
         except Exception as e:
+            last_error = e
             print(f"⚠️ Database init attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
                 print(f"🔄 Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
             else:
                 print("❌ Max retries reached. Database initialization failed.")
+    raise RuntimeError(f"Database initialization failed after {max_retries} attempts: {last_error}")
 
 def _int_env(name: str, default: int, min_value: int, max_value: int) -> int:
     raw = os.getenv(name)
