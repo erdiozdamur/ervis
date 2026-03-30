@@ -28,7 +28,10 @@ services:
     depends_on:
       - db
     ports:
-      - "127.0.0.1:8000:8000"
+      - target: 8000
+        published: "${BACKEND_HOST_PORT:-0}"
+        host_ip: 127.0.0.1
+        protocol: tcp
     restart: unless-stopped
 
   frontend:
@@ -38,7 +41,10 @@ services:
     depends_on:
       - backend
     ports:
-      - "127.0.0.1:5173:80"
+      - target: 80
+        published: "${FRONTEND_HOST_PORT:-0}"
+        host_ip: 127.0.0.1
+        protocol: tcp
     restart: unless-stopped
 
 volumes:
