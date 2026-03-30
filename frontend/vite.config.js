@@ -8,6 +8,19 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/app.js',
+        chunkFileNames: 'assets/chunk-[name].js',
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.names && assetInfo.names[0] ? assetInfo.names[0] : assetInfo.name || '';
+          if (name.endsWith('.css')) return 'assets/app.css';
+          return 'assets/[name][extname]';
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {
