@@ -63,6 +63,7 @@ function ChatInterface() {
   const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false);
   const [isKnowledgeSubmitting, setIsKnowledgeSubmitting] = useState(false);
+  const [isKnowledgeFileReading, setIsKnowledgeFileReading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState('');
   const [knowledgeSuccess, setKnowledgeSuccess] = useState('');
   const [docForm, setDocForm] = useState({
@@ -145,6 +146,50 @@ function ChatInterface() {
       setKnowledgeError(typeof detail === 'string' ? detail : 'Doküman kaydı başarısız oldu.');
     } finally {
       setIsKnowledgeSubmitting(false);
+    }
+  };
+
+  const handleKnowledgeFileSelect = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const maxFileSize = 3 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      setKnowledgeError('Dosya boyutu en fazla 3MB olabilir.');
+      return;
+    }
+
+    const extension = (file.name.split('.').pop() || '').toLowerCase();
+    const supportedExtensions = ['txt', 'md', 'markdown', 'csv', 'json', 'log'];
+    if (!supportedExtensions.includes(extension)) {
+      setKnowledgeError('Yalnızca txt, md, csv, json ve log dosyaları destekleniyor.');
+      return;
+    }
+
+    setKnowledgeError('');
+    setKnowledgeSuccess('');
+    setIsKnowledgeFileReading(true);
+    try {
+      const text = await file.text();
+      const normalized = (text || '').trim();
+      if (normalized.length < 40) {
+        setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
+        return;
+      }
+      const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
+      setDocForm((prev) => ({
+        ...prev,
+        title: prev.title.trim() ? prev.title : defaultTitle,
+        content: normalized,
+        source_type: 'file',
+        source_ref: file.name,
+      }));
+      setKnowledgeSuccess(`Dosya yüklendi: ${file.name}. İçerik forma aktarıldı.`);
+    } catch {
+      setKnowledgeError('Dosya okunurken bir sorun oluştu.');
+    } finally {
+      setIsKnowledgeFileReading(false);
     }
   };
 
@@ -915,9 +960,21 @@ function ChatInterface() {
                   <p className="text-xs text-[var(--text-muted)]">
                     İçerik uzunluğu: {docForm.content.trim().length} karakter
                   </p>
-                  <button type="submit" disabled={isKnowledgeSubmitting} className="btn-accent rounded-xl px-4 py-2 text-sm disabled:opacity-45">
+                  <div className="flex items-center gap-2">
+                    <label className="btn-ghost cursor-pointer rounded-xl px-3 py-2 text-xs">
+                      {isKnowledgeFileReading ? 'Dosya okunuyor...' : 'Dosya Yükle'}
+                      <input
+                        type="file"
+                        accept=".txt,.md,.markdown,.csv,.json,.log,text/plain,text/markdown,text/csv,application/json"
+                        className="hidden"
+                        onChange={handleKnowledgeFileSelect}
+                        disabled={isKnowledgeFileReading || isKnowledgeSubmitting}
+                      />
+                    </label>
+                    <button type="submit" disabled={isKnowledgeSubmitting || isKnowledgeFileReading} className="btn-accent rounded-xl px-4 py-2 text-sm disabled:opacity-45">
                     {isKnowledgeSubmitting ? 'İşleniyor...' : 'Dokümanı İndeksle'}
-                  </button>
+                    </button>
+                  </div>
                 </div>
               </form>
 
