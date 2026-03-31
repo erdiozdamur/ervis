@@ -489,7 +489,7 @@ function ChatInterface() {
             <button
               type="button"
               onClick={clearChat}
-              className="btn-accent inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold lg:hidden"
+              className="btn-accent btn-new-chat inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold lg:hidden"
               title="Yeni Sohbet"
               aria-label="Yeni Sohbet"
             >
@@ -498,7 +498,7 @@ function ChatInterface() {
             </button>
             <button
               type="button"
-              onClick={() => setIsDeckOpen(true)}
+              onClick={() => setIsDeckOpen((prev) => !prev)}
               className="group min-w-0 rounded-xl px-1 py-0.5 text-left"
               aria-label="Ervis Command Deck actions"
             >
@@ -599,7 +599,7 @@ function ChatInterface() {
 
           <button
             type="button"
-            onClick={() => setIsDeckOpen(true)}
+            onClick={() => setIsDeckOpen((prev) => !prev)}
             className="btn-ghost inline-flex h-10 items-center gap-2 rounded-xl px-3"
             title="Sohbet Paneli"
             aria-label="Sohbet Paneli"
