@@ -1,16 +1,22 @@
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
-from models import Entity, Relation
+from models import Entity, Relation, MemoryFact
 
 # load_dotenv is handled globally in api.py
 
 _client: Optional[AsyncOpenAI] = None
+ENTITY_ALIAS_MAP = {
+    "po": "Product Owner",
+    "pm": "Product Manager",
+    "yazilimci": "Yazılımcı",
+    "software engineer": "Software Engineer",
+}
 
 def get_openai_client() -> AsyncOpenAI:
     global _client
@@ -29,15 +35,20 @@ class ExtractedEntity(BaseModel):
     name: str = Field(description="Name of the entity, e.g., 'Kullanıcı', 'Salon', 'Hue Play Bar'")
     entity_type: str = Field(description="Type of the entity, e.g., 'Person', 'Vehicle', 'Device', 'Activity'")
     status: str = Field(description="Current status of the entity: 'owned' (already has it) or 'planned' (wants to buy/do it).")
+    confidence_score: float = Field(default=0.7, ge=0.0, le=1.0, description="Confidence score between 0 and 1.")
+    evidence_text: str = Field(default="", description="Short direct evidence from user message.")
     attributes: List[Attribute] = Field(description="List of key-value pairs for the entity attributes.")
 
 class ExtractedRelation(BaseModel):
     source_entity_name: str = Field(description="Name of the source entity.")
     target_entity_name: str = Field(description="Name of the target entity.")
     relation_type: str = Field(description="Type of relation, e.g., 'OWNS', 'PERFORMED', 'PART_OF', 'LOCATED_IN'")
+    confidence_score: float = Field(default=0.7, ge=0.0, le=1.0, description="Confidence score between 0 and 1.")
+    evidence_text: str = Field(default="", description="Short direct evidence from user message.")
     attributes: List[Attribute] = Field(description="List of key-value pairs for the relation attributes.")
 
 class KnowledgeExtraction(BaseModel):
+    fact_status: str = Field(default="confirmed", description="Global status: confirmed|inferred|negated|outdated")
     entities: List[ExtractedEntity]
     relations: List[ExtractedRelation]
 
@@ -62,6 +73,8 @@ SYSTEM_PROMPT = """Sen bir bilgi grafiği çıkarım motorusun. Kullanıcının 
 - "Pena almam lazım" -> Varlık: Pena (entity_type: Consumable, status: planned), İlişki: Kullanıcı -> NEEDS -> Pena.
 
 Lütfen sadece kullanıcıya ait ve kullanıcının bahsettiği asıl nesneleri varlık olarak kaydet. Özellikleri (attributes) çıkarırken anahtar ve değerleri net bir şekilde ayır.
+Her varlık/ilişki için confidence_score ve evidence_text üret.
+Genel fact_status alanını confirmed|inferred|negated|outdated olarak doldur.
 """
 
 async def extract_knowledge(user_input: str) -> tuple[KnowledgeExtraction, str]:
@@ -78,10 +91,31 @@ async def extract_knowledge(user_input: str) -> tuple[KnowledgeExtraction, str]:
     return response.choices[0].message.parsed, response.model
 
 
-async def store_knowledge(user_id: uuid.UUID, extraction: KnowledgeExtraction, db_session: Session):
+def _clamp_confidence(value: float) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.7
+
+
+def _normalize_entity_name(raw_name: str) -> str:
+    normalized = " ".join((raw_name or "").strip().split())
+    alias_key = normalized.lower()
+    if alias_key in ENTITY_ALIAS_MAP:
+        return ENTITY_ALIAS_MAP[alias_key]
+    return normalized
+
+
+async def store_knowledge(
+    user_id: uuid.UUID,
+    extraction: KnowledgeExtraction,
+    db_session: Session,
+    source_message_id: Optional[uuid.UUID] = None,
+):
     entity_id_map = {}
 
     for ext_entity in extraction.entities:
+        ext_entity.name = _normalize_entity_name(ext_entity.name)
         # Convert List[Attribute] to Dict[str, Any] and add status
         attr_dict = {attr.key: attr.value for attr in ext_entity.attributes}
         attr_dict["status"] = ext_entity.status
@@ -98,7 +132,9 @@ async def store_knowledge(user_id: uuid.UUID, extraction: KnowledgeExtraction, d
             if existing_entity.attributes is None:
                 existing_entity.attributes = {}
             existing_entity.attributes.update(attr_dict)
+            existing_entity.updated_at = datetime.now(timezone.utc)
             entity_id_map[ext_entity.name] = existing_entity.id
+            resolved_entity = existing_entity
         else:
             new_entity = Entity(
                 user_id=user_id,
@@ -109,6 +145,32 @@ async def store_knowledge(user_id: uuid.UUID, extraction: KnowledgeExtraction, d
             db_session.add(new_entity)
             db_session.flush()
             entity_id_map[ext_entity.name] = new_entity.id
+            resolved_entity = new_entity
+
+        # Contradiction management for role/profession facts.
+        if ext_entity.entity_type.lower() in {"meslek", "rol", "role"} and extraction.fact_status in {"confirmed", "inferred"}:
+            stale_facts = db_session.execute(
+                select(MemoryFact).where(
+                    MemoryFact.user_id == user_id,
+                    MemoryFact.entity_id != resolved_entity.id,
+                    MemoryFact.fact_status.in_(["confirmed", "inferred"]),
+                )
+            ).scalars().all()
+            for stale_fact in stale_facts:
+                if "meslek" in stale_fact.fact_text.lower() or "rol" in stale_fact.fact_text.lower():
+                    stale_fact.fact_status = "outdated"
+
+        db_session.add(
+            MemoryFact(
+                user_id=user_id,
+                entity_id=resolved_entity.id,
+                source_message_id=source_message_id,
+                fact_text=f"{ext_entity.entity_type}: {ext_entity.name}",
+                fact_status=extraction.fact_status if extraction.fact_status in {"confirmed", "inferred", "negated", "outdated"} else "confirmed",
+                confidence_score=_clamp_confidence(ext_entity.confidence_score),
+                evidence_text=(ext_entity.evidence_text or "")[:500],
+            )
+        )
 
     for ext_rel in extraction.relations:
         # Convert List[Attribute] to Dict[str, Any]
@@ -132,6 +194,7 @@ async def store_knowledge(user_id: uuid.UUID, extraction: KnowledgeExtraction, d
             if existing_relation.attributes is None:
                 existing_relation.attributes = {}
             existing_relation.attributes.update(attr_dict)
+            resolved_relation = existing_relation
         else:
             new_relation = Relation(
                 source_entity_id=source_id,
@@ -140,5 +203,19 @@ async def store_knowledge(user_id: uuid.UUID, extraction: KnowledgeExtraction, d
                 attributes=attr_dict
             )
             db_session.add(new_relation)
+            db_session.flush()
+            resolved_relation = new_relation
+
+        db_session.add(
+            MemoryFact(
+                user_id=user_id,
+                relation_id=resolved_relation.id,
+                source_message_id=source_message_id,
+                fact_text=f"{ext_rel.source_entity_name} -> {ext_rel.relation_type} -> {ext_rel.target_entity_name}",
+                fact_status=extraction.fact_status if extraction.fact_status in {"confirmed", "inferred", "negated", "outdated"} else "confirmed",
+                confidence_score=_clamp_confidence(ext_rel.confidence_score),
+                evidence_text=(ext_rel.evidence_text or "")[:500],
+            )
+        )
             
     db_session.commit()

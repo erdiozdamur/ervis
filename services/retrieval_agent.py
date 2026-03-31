@@ -1,11 +1,12 @@
 import os
 import uuid
+from math import exp
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
-from models import Entity, Relation
+from models import Entity, Relation, MemoryFact
 
 # load_dotenv is handled globally in api.py
 # Reuse the lazy client initialization pattern from other services
@@ -25,6 +26,9 @@ async def retrieve_context(user_id: uuid.UUID, query: str, db_session: Session) 
     Search for relevant entities and relations in the database and format them as context.
     ALWAYS includes 'Kullanıcı Profili' and 'Rol/Meslek' information to ensure identity awareness.
     """
+    max_entities = int(os.getenv("MEMORY_RETRIEVAL_MAX_ENTITIES", "12"))
+    max_relations = int(os.getenv("MEMORY_RETRIEVAL_MAX_RELATIONS", "20"))
+    max_facts = int(os.getenv("MEMORY_RETRIEVAL_MAX_FACTS", "15"))
     # 1. Fetch Identity/Profile entities FIRST
     profile_stmt = select(Entity).where(
         Entity.user_id == user_id, 
@@ -51,12 +55,17 @@ async def retrieve_context(user_id: uuid.UUID, query: str, db_session: Session) 
             matched_entities.append(e)
             seen_ids.add(e.id)
 
-    # Fallback: If no keyword matches beyond profile, take the most recent 5 entities
+    # Fallback: If no keyword matches beyond profile, take the most recent entities
     if len(matched_entities) == len(profile_entities) and all_user_entities:
-        for e in all_user_entities[:5]:
+        for e in all_user_entities[:max_entities]:
             if e.id not in seen_ids:
                 matched_entities.append(e)
                 seen_ids.add(e.id)
+
+    # Hard cap for prompt optimization
+    if len(matched_entities) > max_entities:
+        matched_entities = matched_entities[:max_entities]
+        seen_ids = {e.id for e in matched_entities}
     
     entity_ids = list(seen_ids)
     
@@ -88,11 +97,44 @@ async def retrieve_context(user_id: uuid.UUID, query: str, db_session: Session) 
             result_names = db_session.execute(name_stmt).all()
             entity_name_map = {row.id: row.name for row in result_names}
 
+        relation_rows = []
         for r in relations:
             source_name = entity_name_map.get(r.source_entity_id, "Bilinmeyen")
             target_name = entity_name_map.get(r.target_entity_id, "Bilinmeyen")
             attr_str = ", ".join([f"{k}: {v}" for k, v in (r.attributes or {}).items()])
-            context_lines.append(f"[İlişki: {source_name}] -> ({r.relation_type}) -> [{target_name}] Özellikler: {{{attr_str}}}")
+            relation_rows.append((r.valid_from or datetime.min, f"[İlişki: {source_name}] -> ({r.relation_type}) -> [{target_name}] Özellikler: {{{attr_str}}}"))
+        relation_rows.sort(key=lambda x: x[0], reverse=True)
+        for _, row_text in relation_rows[:max_relations]:
+            context_lines.append(row_text)
+
+    # 4. Hybrid fact retrieval (semantic+keyword+confidence+recency)
+    facts_stmt = select(MemoryFact).where(
+        MemoryFact.user_id == user_id
+    ).order_by(MemoryFact.observed_at.desc()).limit(200)
+    facts = db_session.execute(facts_stmt).scalars().all()
+    if facts:
+        query_words = {w for w in words if len(w) > 2}
+        scored_facts = []
+        now = datetime.utcnow()
+        for fact in facts:
+            text = (fact.fact_text or "").lower()
+            overlap = 0.0
+            if query_words:
+                overlap = len([w for w in query_words if w in text]) / max(1, len(query_words))
+            confidence = max(0.0, min(1.0, float(fact.confidence_score or 0.0)))
+            age_days = max(0.0, (now - (fact.observed_at.replace(tzinfo=None) if fact.observed_at else now)).days)
+            recency = exp(-age_days / 30.0)
+            semantic_hint = 1.0 if (text and (text in query_lower or any(w in text for w in query_words))) else 0.0
+            score = 0.45 * semantic_hint + 0.25 * overlap + 0.20 * confidence + 0.10 * recency
+            scored_facts.append((score, fact))
+        scored_facts.sort(key=lambda x: x[0], reverse=True)
+        for score, fact in scored_facts[:max_facts]:
+            if score < 0.35:
+                continue
+            tag = "Fact"
+            if fact.fact_status in {"negated", "outdated"} or fact.confidence_score < 0.55:
+                tag = "UncertainFact"
+            context_lines.append(f"[{tag}] {fact.fact_text} | status={fact.fact_status} | confidence={fact.confidence_score:.2f} | evidence={((fact.evidence_text or '')[:120])}")
 
     if not context_lines:
         return "Hiçbir kayıt bulunamadı."
@@ -130,6 +172,7 @@ Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] verilerini 
    - Eğer "[KAYNAK:ESPN-FIXTURE]" geçiyorsa, oradaki eşleşme/tarih bilgisi birincil doğrudur. Kısa ve net cevap ver.
    - Eğer "[KAYNAK:ESPN-FIXTURE-NO-MATCH]" ve "status=NO_MATCH_ON_TARGET_DATE" geçiyorsa, o tarihte maç olmadığını açıkça söyle. Varsa `next_match_date` ve `next_match` bilgisini ekle.
 7. KAYNAK ŞEFFAFLIĞI: Dinamik cevap verirken en az bir kaynağı kısa şekilde an (site adı veya link).
+8. HAFIZA DOĞRULAMA: [SİSTEM HAFIZASI] içinde [UncertainFact] satırları varsa, kullanıcıya kısa bir doğrulama sorusu sor (örn. "Bunu hala geçerli kabul edelim mi?").
 
 Cevaplarını her zaman profesyonel, zeki ve Türkçe olarak ver.
 """

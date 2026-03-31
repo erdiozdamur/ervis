@@ -1,12 +1,17 @@
 import os
 import uuid
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
-from models import Entity, Relation, User
+from pydantic import BaseModel, Field
+from models import Entity, Relation, User, MemoryFact
 from sqlalchemy import select, or_
 
 _client: Optional[AsyncOpenAI] = None
+TOPIC_ALIAS_MAP = {
+    "po": "Product Owner",
+    "pm": "Product Manager",
+}
 
 def get_openai_client() -> AsyncOpenAI:
     global _client
@@ -17,7 +22,19 @@ def get_openai_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(api_key=api_key)
     return _client
 
-async def passive_memory_observation(user_id: uuid.UUID, query: str, response: str, db_session: Session):
+
+def _normalize_topic(topic: str) -> str:
+    normalized = " ".join((topic or "").strip().split())
+    alias_key = normalized.lower()
+    return TOPIC_ALIAS_MAP.get(alias_key, normalized)
+
+async def passive_memory_observation(
+    user_id: uuid.UUID,
+    query: str,
+    response: str,
+    db_session: Session,
+    source_message_id: Optional[uuid.UUID] = None,
+):
     """
     Analyzes a chat interaction to extract implicit interests and preferences.
     Updates the Knowledge Graph with [User] -> (HAS_INTEREST) -> [Topic] relations.
@@ -25,6 +42,16 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
     try:
         client = get_openai_client()
         
+        class ObservedFact(BaseModel):
+            topic: str = Field(description="Short fact/topic phrase")
+            fact_type: str = Field(description="interest|role|habit|preference")
+            confidence_score: float = Field(default=0.7, ge=0.0, le=1.0)
+            evidence_text: str = Field(default="", description="Short evidence quoted from user content")
+            fact_status: str = Field(default="inferred", description="confirmed|inferred|negated|outdated")
+
+        class ObservationPayload(BaseModel):
+            facts: List[ObservedFact]
+
         system_prompt = """Sen Ervis'in Pasif Gözlemci Ajanı'sın. Görevin, kullanıcı ve asistan arasındaki yazışmayı analiz ederek kullanıcının uzun vadeli İLGİ ALANLARINI, TERCİHLERİNİ, ALIŞKANLIKLARINI ve KİMLİK/ROL (Meslek, Uzmanlık, Unvan) bilgilerini tespit etmektir.
         
         KURALLAR:
@@ -33,33 +60,36 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
         3. Çıkardığın her bilgiyi kısa anahtar kelimeler olarak belirle.
         4. Eğer yeni bir bilgi yoksa 'NONE' yaz.
         
-        ÇIKTI FORMATI: 
-        Sadece virgülle ayrılmış anahtar kelimeler (Örn: Product Owner, Futbol, Teknoloji). Hiçbir şey bulamadıysan 'NONE' yaz.
+        ÇIKTI FORMATI:
+        JSON formatında { "facts": [{ "topic": "...", "fact_type": "...", "confidence_score": 0-1, "evidence_text": "...", "fact_status": "inferred" }] } döndür.
+        Bilgi yoksa {"facts": []} döndür.
         """
-        
-        llm_response = await client.chat.completions.create(
+
+        llm_response = await client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Kullanıcı: {query}\nAsistan: {response}"}
             ],
+            response_format=ObservationPayload,
             temperature=0.0
         )
-        
-        content = llm_response.choices[0].message.content.strip()
-        if content == "NONE" or not content:
+
+        payload = llm_response.choices[0].message.parsed
+        if not payload or not payload.facts:
             return
 
-        interests = [i.strip() for i in content.split(",") if i.strip()]
-        
         # Get User object
         user = db_session.get(User, user_id)
         if not user: return
 
-        for topic in interests:
+        for item in payload.facts:
+            topic = _normalize_topic(item.topic)
+            if not topic:
+                continue
             # Determining the most appropriate entity type
             # If it's a known role or sounds like a profession, we'll mark it as 'Meslek'
-            is_role = any(kw in topic.lower() for kw in ["owner", "müdür", "manager", "engineer", "doktor", "yazılımcı", "tasarımcı", "analist", "başkan", "öğretmen"])
+            is_role = item.fact_type == "role" or any(kw in topic.lower() for kw in ["owner", "müdür", "manager", "engineer", "doktor", "yazılımcı", "tasarımcı", "analist", "başkan", "öğretmen"])
             e_type = "Meslek" if is_role else "İlgi Alanı"
 
             # 1. Ensure the Entity exists
@@ -71,7 +101,7 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
                     user_id=user_id,
                     name=topic,
                     entity_type=e_type,
-                    attributes={"source": "passive_observation"}
+                    attributes={"source": "passive_observation", "fact_type": item.fact_type}
                 )
                 db_session.add(topic_entity)
                 db_session.flush() # Get ID
@@ -107,12 +137,33 @@ async def passive_memory_observation(user_id: uuid.UUID, query: str, response: s
                     source_entity_id=profile_entity.id,
                     target_entity_id=topic_entity.id,
                     relation_type="İLGİ_DUYUYOR",
-                    attributes={"confidence": "high", "detected_from": query[:50]}
+                    attributes={
+                        "confidence_score": max(0.0, min(1.0, float(item.confidence_score))),
+                        "detected_from": query[:200],
+                        "fact_type": item.fact_type,
+                    }
                 )
                 db_session.add(new_rel)
+                db_session.flush()
+                rel_obj = new_rel
+            else:
+                rel_obj = existing_rel
+
+            db_session.add(
+                MemoryFact(
+                    user_id=user_id,
+                    entity_id=topic_entity.id,
+                    relation_id=rel_obj.id if rel_obj else None,
+                    source_message_id=source_message_id,
+                    fact_text=f"{e_type}: {topic}",
+                    fact_status=item.fact_status if item.fact_status in {"confirmed", "inferred", "negated", "outdated"} else "inferred",
+                    confidence_score=max(0.0, min(1.0, float(item.confidence_score))),
+                    evidence_text=(item.evidence_text or query)[:500],
+                )
+            )
         
         db_session.commit()
-        print(f"🧠 [OBSERVER] Inferred interests: {interests} for user {user.username}")
+        print(f"🧠 [OBSERVER] Inferred {len(payload.facts)} facts for user {user.username}")
         
     except Exception as e:
         db_session.rollback()
