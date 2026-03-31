@@ -360,6 +360,43 @@ function ChatInterface() {
     }
   };
 
+  const getCommandDeckStatus = () => {
+    if (isLoading) {
+      return {
+        title: 'Yanıt hazırlanıyor',
+        detail: 'Asistan aktif yanıt üretiyor',
+      };
+    }
+
+    if (isHydratingHistory || isHydratingConversations) {
+      return {
+        title: 'Sohbet yükleniyor',
+        detail: 'Oturum verileri senkronize ediliyor',
+      };
+    }
+
+    if (input.trim()) {
+      return {
+        title: 'Taslak hazır',
+        detail: `${input.trim().slice(0, 48)}${input.trim().length > 48 ? '…' : ''}`,
+      };
+    }
+
+    if (activeConversation?.title) {
+      return {
+        title: 'Aktif oturum',
+        detail: clampText(activeConversation.title, 48),
+      };
+    }
+
+    return {
+      title: 'Beklemede',
+      detail: 'Bir komut yazarak başlayabilirsin',
+    };
+  };
+
+  const commandDeckStatus = getCommandDeckStatus();
+
   return (
     <div className="relative flex h-[100dvh] w-full overflow-hidden text-[var(--text-main)]">
       <div className="ambient-grid pointer-events-none absolute inset-0 opacity-70" />
@@ -477,8 +514,8 @@ function ChatInterface() {
       </aside>
 
       <main className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <header className="surface-panel relative mx-3 mt-3 flex h-16 items-center justify-between rounded-2xl px-3 sm:mx-4 sm:px-5 lg:mx-6">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3" ref={deckRef}>
+        <header className="surface-panel relative mx-3 mt-3 flex h-16 items-center justify-between rounded-2xl px-3 sm:mx-4 sm:px-5 lg:mx-6" ref={deckRef}>
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setIsSidebarOpen(true)}
@@ -500,12 +537,12 @@ function ChatInterface() {
               type="button"
               onClick={() => setIsDeckOpen((prev) => !prev)}
               className="group min-w-0 rounded-xl px-1 py-0.5 text-left"
-              aria-label="Ervis Command Deck actions"
+              aria-label="Komut paneli durumu"
             >
-              <p className="type-headline truncate whitespace-nowrap text-base font-bold leading-none sm:text-lg">Ervis Command Deck</p>
+              <p className="type-headline truncate whitespace-nowrap text-base font-bold leading-none sm:text-lg">{commandDeckStatus.title}</p>
               <div className="mt-1 hidden items-center gap-2 text-[11px] text-[var(--text-muted)] sm:flex">
                 <span className="pulse-dot" />
-                Canlı
+                <span className="truncate">{commandDeckStatus.detail}</span>
               </div>
             </button>
 
