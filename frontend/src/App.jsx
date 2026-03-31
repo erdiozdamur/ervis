@@ -27,7 +27,7 @@ const CONVERSATIONS_URL = '/api/chat/conversations';
 const CONVERSATION_FETCH_LIMIT = 24;
 const HISTORY_FETCH_LIMIT = 40;
 const UI_MESSAGE_LIMIT = 60;
-const INPUT_MAX_CHARS = 1500;
+const INPUT_MAX_CHARS = 2000;
 const MESSAGE_RENDER_CHAR_LIMIT = 4000;
 
 const trimMessages = (items, limit = UI_MESSAGE_LIMIT) => {
@@ -60,6 +60,7 @@ function ChatInterface() {
   const { user, logout } = useAuth();
   const messagesEndRef = useRef(null);
   const deckRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     fetch('https://ipapi.co/json/')
@@ -166,6 +167,13 @@ function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.style.height = '0px';
+    const nextHeight = Math.min(inputRef.current.scrollHeight, 220);
+    inputRef.current.style.height = `${nextHeight}px`;
+  }, [input]);
+
   const sendMessage = async (rawContent) => {
     const content = clampText(rawContent, INPUT_MAX_CHARS);
     if (!content || isLoading || !activeConversationId) return;
@@ -238,6 +246,13 @@ function ChatInterface() {
   const handleSend = async (event) => {
     event.preventDefault();
     if (!input.trim()) return;
+    await sendMessage(input);
+  };
+
+  const handleInputKeyDown = async (event) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    if (!input.trim() || isLoading) return;
     await sendMessage(input);
   };
 
@@ -683,14 +698,16 @@ function ChatInterface() {
                 <div className="hidden rounded-xl bg-[rgba(107,212,255,0.14)] p-2 text-[var(--accent-2)] sm:block">
                   <Command size={18} />
                 </div>
-                <input
-                  type="text"
+                <textarea
+                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
                   placeholder="Ervis'e bir talimat ver..."
                   maxLength={INPUT_MAX_CHARS}
                   disabled={isLoading}
-                  className="h-11 min-w-0 flex-1 rounded-xl border border-transparent bg-transparent px-3 text-sm text-[var(--text-main)] outline-none placeholder:text-[var(--text-muted)] focus:border-[rgba(126,168,255,0.46)] sm:h-12 sm:text-base"
+                  rows={1}
+                  className="min-h-[44px] max-h-[220px] min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-transparent bg-transparent px-3 py-2 text-sm text-[var(--text-main)] outline-none placeholder:text-[var(--text-muted)] focus:border-[rgba(126,168,255,0.46)] sm:min-h-[48px] sm:text-base"
                 />
                 <button
                   type="submit"

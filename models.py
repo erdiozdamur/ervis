@@ -52,6 +52,27 @@ class Relation(Base):
         Index("ix_relation_source_target", "source_entity_id", "target_entity_id"),
     )
 
+class MemoryFact(Base):
+    __tablename__ = "memory_facts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=True)
+    relation_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("relations.id", ondelete="CASCADE"), index=True, nullable=True)
+    source_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("chat_messages.id", ondelete="SET NULL"), index=True, nullable=True)
+    fact_text: Mapped[str] = mapped_column(String, nullable=False)
+    fact_status: Mapped[str] = mapped_column(String, default="confirmed", index=True, nullable=False)  # confirmed|inferred|negated|outdated
+    confidence_score: Mapped[float] = mapped_column(nullable=False, default=0.7)
+    evidence_text: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    last_confirmed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    embedding: Mapped[Optional[list]] = mapped_column(Vector(1536), nullable=True)
+
+    __table_args__ = (
+        Index("ix_memory_facts_user_observed_at", "user_id", "observed_at"),
+        Index("ix_memory_facts_user_status", "user_id", "fact_status"),
+    )
+
 
 class QueryCache(Base):
     __tablename__ = "query_cache"

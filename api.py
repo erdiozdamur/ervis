@@ -30,7 +30,7 @@ from services.cache_service import check_cache, save_to_cache, clear_user_cache,
 from services.web_search_agent import search_the_web
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
 from services.memory_observer import passive_memory_observation
-from models import User, Base, ChatMessage, Conversation
+from models import User, Base, ChatMessage, Conversation, MemoryFact
 
 # Database Setup
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -83,6 +83,30 @@ def _init_database():
                 conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_chat_messages_conversation_created_at
                     ON chat_messages (conversation_id, created_at);
+                """))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS memory_facts (
+                        id UUID PRIMARY KEY,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        entity_id UUID NULL REFERENCES entities(id) ON DELETE CASCADE,
+                        relation_id UUID NULL REFERENCES relations(id) ON DELETE CASCADE,
+                        source_message_id UUID NULL REFERENCES chat_messages(id) ON DELETE SET NULL,
+                        fact_text VARCHAR NOT NULL,
+                        fact_status VARCHAR NOT NULL DEFAULT 'confirmed',
+                        confidence_score DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+                        evidence_text VARCHAR NULL,
+                        observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        last_confirmed_at TIMESTAMPTZ NULL,
+                        embedding vector(1536) NULL
+                    );
+                """))
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_memory_facts_user_observed_at
+                    ON memory_facts (user_id, observed_at DESC);
+                """))
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_memory_facts_user_status
+                    ON memory_facts (user_id, fact_status);
                 """))
                 conn.execute(text("""
                     DO $$
@@ -191,7 +215,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     return user
 
 # Background Task Wrapper
-async def background_memory_extraction(user_id: uuid.UUID, message: str):
+def _find_source_message_id(db: Session, user_id: uuid.UUID, conversation_id: Optional[uuid.UUID], message: str) -> Optional[uuid.UUID]:
+    stmt = select(ChatMessage.id).where(
+        ChatMessage.user_id == user_id,
+        ChatMessage.role == "user",
+        ChatMessage.content == message,
+    )
+    if conversation_id:
+        stmt = stmt.where(ChatMessage.conversation_id == conversation_id)
+    stmt = stmt.order_by(ChatMessage.created_at.desc()).limit(1)
+    return db.execute(stmt).scalars().first()
+
+
+async def background_memory_extraction(user_id: uuid.UUID, message: str, conversation_id: Optional[uuid.UUID] = None):
     """
     Handles memory extraction and storage in the background with a fresh DB session.
     """
@@ -199,21 +235,33 @@ async def background_memory_extraction(user_id: uuid.UUID, message: str):
     try:
         # 1. Extract knowledge graph
         extraction, model_name = await extract_knowledge(message)
+        source_message_id = _find_source_message_id(db, user_id, conversation_id, message)
         # 2. Store in DB with isolation
-        await store_knowledge(user_id=user_id, extraction=extraction, db_session=db)
+        await store_knowledge(
+            user_id=user_id,
+            extraction=extraction,
+            db_session=db,
+            source_message_id=source_message_id,
+        )
         print(f"Background memory extraction completed for user {user_id} using {model_name}")
     except Exception as e:
         print(f"Background memory error: {str(e)}")
     finally:
         db.close()
 
-async def background_passive_observation(user_id: uuid.UUID, message: str, response: str):
+async def background_passive_observation(
+    user_id: uuid.UUID,
+    message: str,
+    response: str,
+    conversation_id: Optional[uuid.UUID] = None,
+):
     """
     Handles passive memory observation in the background.
     """
     db = SessionLocal()
     try:
-        await passive_memory_observation(user_id, message, response, db)
+        source_message_id = _find_source_message_id(db, user_id, conversation_id, message)
+        await passive_memory_observation(user_id, message, response, db, source_message_id=source_message_id)
     except Exception as e:
         print(f"Background observation error: {str(e)}")
     finally:
@@ -357,6 +405,14 @@ class Token(BaseModel):
     token_type: str
     user_id: uuid.UUID
     username: str
+
+
+class MemoryMetricsResponse(BaseModel):
+    total_facts: int
+    confirmed_facts: int
+    uncertain_facts: int
+    stale_fact_ratio: float
+    contradiction_rate: float
 
 def _store_chat_history_now(
     db: Session,
@@ -639,6 +695,50 @@ async def clear_chat_history(
     db.commit()
     return {"message": "Conversation history cleared"}
 
+
+@app.get("/api/memory/metrics", response_model=MemoryMetricsResponse)
+async def memory_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    total_facts = db.execute(
+        select(func.count()).select_from(MemoryFact).where(MemoryFact.user_id == current_user.id)
+    ).scalar_one()
+    confirmed_facts = db.execute(
+        select(func.count()).select_from(MemoryFact).where(
+            MemoryFact.user_id == current_user.id,
+            MemoryFact.fact_status == "confirmed",
+        )
+    ).scalar_one()
+    uncertain_facts = db.execute(
+        select(func.count()).select_from(MemoryFact).where(
+            MemoryFact.user_id == current_user.id,
+            or_(MemoryFact.fact_status.in_(["inferred", "negated", "outdated"]), MemoryFact.confidence_score < 0.55),
+        )
+    ).scalar_one()
+    outdated_facts = db.execute(
+        select(func.count()).select_from(MemoryFact).where(
+            MemoryFact.user_id == current_user.id,
+            MemoryFact.fact_status == "outdated",
+        )
+    ).scalar_one()
+    contradiction_facts = db.execute(
+        select(func.count()).select_from(MemoryFact).where(
+            MemoryFact.user_id == current_user.id,
+            MemoryFact.fact_status.in_(["negated", "outdated"]),
+        )
+    ).scalar_one()
+
+    stale_ratio = (float(outdated_facts) / float(total_facts)) if total_facts else 0.0
+    contradiction_rate = (float(contradiction_facts) / float(total_facts)) if total_facts else 0.0
+    return MemoryMetricsResponse(
+        total_facts=total_facts,
+        confirmed_facts=confirmed_facts,
+        uncertain_facts=uncertain_facts,
+        stale_fact_ratio=round(stale_ratio, 4),
+        contradiction_rate=round(contradiction_rate, 4),
+    )
+
 @app.post("/api/auth/register")
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if user exists
@@ -689,7 +789,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
         # Step 2: Route based on intent
         if intent_response.intent == IntentType.LOG_ENTITY:
             # Dual-Track: Run memory extraction in background and return immediately
-            background_tasks.add_task(background_memory_extraction, user_id, request.message)
+            background_tasks.add_task(background_memory_extraction, user_id, request.message, conversation.id)
             
             # Flush relevant cache because system knowledge changed (Smart clearing)
             await clear_user_cache(user_id, db_session=db, hint=request.message)
@@ -698,7 +798,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             ack = intent_response.suggested_acknowledgment or "Anladım, bu bilgiyi hafızama not ediyorum."
             
             # Passive observation in parallel to extraction
-            background_tasks.add_task(background_passive_observation, user_id, request.message, ack)
+            background_tasks.add_task(background_passive_observation, user_id, request.message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
@@ -721,7 +821,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             cached_response = await check_cache(user_id, request.message, db_session=db)
             if cached_response:
                 # IMPORTANT: Even on cache hit, trigger observation so system learns from context!
-                background_tasks.add_task(background_passive_observation, user_id, request.message, cached_response)
+                background_tasks.add_task(background_passive_observation, user_id, request.message, cached_response, conversation.id)
                 _store_chat_history_now(
                     db,
                     user_id,
@@ -762,7 +862,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             await save_to_cache(user_id, request.message, answer, db_session=db)
             
             # 5. Passive Observation
-            background_tasks.add_task(background_passive_observation, user_id, request.message, answer)
+            background_tasks.add_task(background_passive_observation, user_id, request.message, answer, conversation.id)
             effective_model = f"{final_model} + web-search" if web_context else final_model
             _store_chat_history_now(
                 db,
@@ -788,8 +888,8 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             print(f"DEBUG: Tool execution result: {result}")
             
             # Dual-Track: Even after tool execution, extract memory in background
-            background_tasks.add_task(background_memory_extraction, user_id, request.message)
-            background_tasks.add_task(background_passive_observation, user_id, request.message, result)
+            background_tasks.add_task(background_memory_extraction, user_id, request.message, conversation.id)
+            background_tasks.add_task(background_passive_observation, user_id, request.message, result, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
@@ -812,7 +912,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
         else: # GENERAL_CHAT
             ack = intent_response.suggested_acknowledgment or "Merhaba! Size nasıl yardımcı olabilirim?"
-            background_tasks.add_task(background_passive_observation, user_id, request.message, ack)
+            background_tasks.add_task(background_passive_observation, user_id, request.message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
