@@ -492,6 +492,15 @@ function ChatInterface() {
             </div>
             <button
               type="button"
+              onClick={clearChat}
+              className="btn-accent rounded-xl p-2 lg:hidden"
+              title="Yeni Oturum"
+              aria-label="Yeni Oturum"
+            >
+              <Plus size={16} />
+            </button>
+            <button
+              type="button"
               onClick={() => setIsDeckOpen((prev) => !prev)}
               className="group rounded-xl px-1 py-0.5 text-left"
               aria-label="Ervis Command Deck actions"
