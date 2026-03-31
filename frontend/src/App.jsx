@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Command,
   FileText,
-  Github,
   ListChecks,
   Loader2,
   LogOut,
@@ -479,7 +478,7 @@ function ChatInterface() {
 
       <main className="relative z-10 flex min-w-0 flex-1 flex-col">
         <header className="surface-panel relative mx-3 mt-3 flex h-16 items-center justify-between rounded-2xl px-3 sm:mx-4 sm:px-5 lg:mx-6">
-          <div className="flex items-center gap-3" ref={deckRef}>
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3" ref={deckRef}>
             <button
               type="button"
               onClick={() => setIsSidebarOpen(true)}
@@ -487,29 +486,24 @@ function ChatInterface() {
             >
               <Menu size={18} />
             </button>
-            <div className="rounded-xl bg-[linear-gradient(135deg,var(--accent-1),var(--accent-2))] p-2 text-slate-900">
-              <Bot size={18} />
-            </div>
             <button
               type="button"
               onClick={clearChat}
-              className="btn-accent rounded-xl p-2 lg:hidden"
-              title="Yeni Oturum"
-              aria-label="Yeni Oturum"
+              className="btn-accent inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold lg:hidden"
+              title="Yeni Sohbet"
+              aria-label="Yeni Sohbet"
             >
-              <Plus size={16} />
+              <Plus size={18} />
+              <span>Yeni Sohbet</span>
             </button>
             <button
               type="button"
-              onClick={() => setIsDeckOpen((prev) => !prev)}
-              className="group rounded-xl px-1 py-0.5 text-left"
+              onClick={() => setIsDeckOpen(true)}
+              className="group min-w-0 rounded-xl px-1 py-0.5 text-left"
               aria-label="Ervis Command Deck actions"
             >
-              <div className="flex items-center gap-2">
-                <p className="type-headline text-base font-bold sm:text-lg">Ervis Command Deck</p>
-                <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${isDeckOpen ? 'rotate-180' : ''}`} />
-              </div>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+              <p className="type-headline truncate whitespace-nowrap text-base font-bold leading-none sm:text-lg">Ervis Command Deck</p>
+              <div className="mt-1 hidden items-center gap-2 text-[11px] text-[var(--text-muted)] sm:flex">
                 <span className="pulse-dot" />
                 Canlı
               </div>
@@ -605,11 +599,14 @@ function ChatInterface() {
 
           <button
             type="button"
-            className="btn-ghost rounded-xl p-2"
-            title="Github"
-            aria-label="Github"
+            onClick={() => setIsDeckOpen(true)}
+            className="btn-ghost inline-flex h-10 items-center gap-2 rounded-xl px-3"
+            title="Sohbet Paneli"
+            aria-label="Sohbet Paneli"
           >
-            <Github size={18} />
+            <Command size={18} />
+            <span className="hidden text-sm font-semibold sm:inline">Panel</span>
+            <ChevronDown size={16} />
           </button>
         </header>
 
