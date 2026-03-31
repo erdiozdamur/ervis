@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text, select, delete, func
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from openai import AuthenticationError as OpenAIAuthenticationError
 
 from services.llm_router import analyze_user_input, IntentType
 from services.memory_agent import extract_knowledge, store_knowledge
@@ -929,6 +930,19 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 conversation_id=conversation.id,
             )
             
+    except OpenAIAuthenticationError:
+        print("OpenAI authentication failed in chat_endpoint. Check OPENAI_API_KEY configuration.")
+        raise HTTPException(
+            status_code=503,
+            detail="AI servisi kimlik doğrulama hatası: OPENAI_API_KEY test ortamında geçersiz veya eksik.",
+        )
+    except ValueError as e:
+        if "OPENAI_API_KEY" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail="AI servisi yapılandırma hatası: OPENAI_API_KEY test ortamında ayarlanmamış.",
+            )
+        raise
     except Exception as e:
         print(f"Error in chat_endpoint: {str(e)}")
         traceback.print_exc()
