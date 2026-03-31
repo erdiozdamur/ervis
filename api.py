@@ -1,4 +1,5 @@
 import os
+import io
 import uuid
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -15,13 +16,14 @@ env_file = f".env.{APP_ENV}"
 if os.path.exists(env_file):
     load_dotenv(env_file, override=False)
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text, select, delete, func
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from openai import AuthenticationError as OpenAIAuthenticationError
+from pypdf import PdfReader
 
 from services.llm_router import analyze_user_input, IntentType
 from services.memory_agent import extract_knowledge, store_knowledge
@@ -449,6 +451,20 @@ class KnowledgeDocumentItem(BaseModel):
     chunk_count: int
     updated_at: datetime
 
+
+def _extract_text_from_uploaded_file(file_name: str, payload: bytes) -> str:
+    ext = (file_name.rsplit(".", 1)[-1] if "." in file_name else "").lower()
+    if ext == "pdf":
+        reader = PdfReader(io.BytesIO(payload))
+        pages: List[str] = []
+        for page in reader.pages:
+            pages.append((page.extract_text() or "").strip())
+        return "\n\n".join([p for p in pages if p]).strip()
+    try:
+        return payload.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return ""
+
 def _store_chat_history_now(
     db: Session,
     user_id: uuid.UUID,
@@ -793,6 +809,58 @@ async def ingest_knowledge_document(
         language=request.language,
         version_tag=request.version_tag,
         tags=request.tags or {},
+    )
+    chunk_count = db.execute(
+        select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.document_id == doc.id)
+    ).scalar_one()
+    return KnowledgeDocumentItem(
+        id=doc.id,
+        title=doc.title,
+        source_type=doc.source_type,
+        source_ref=doc.source_ref,
+        domain=doc.domain,
+        product=doc.product,
+        language=doc.language,
+        version_tag=doc.version_tag,
+        summary=doc.summary,
+        chunk_count=int(chunk_count),
+        updated_at=doc.updated_at,
+    )
+
+
+@app.post("/api/knowledge/documents/upload", response_model=KnowledgeDocumentItem)
+async def upload_knowledge_document(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    domain: Optional[str] = Form(None),
+    product: Optional[str] = Form(None),
+    language: Optional[str] = Form("tr"),
+    version_tag: Optional[str] = Form(None),
+    source_ref: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Dosya boş olamaz.")
+
+    extracted = _extract_text_from_uploaded_file(file.filename or "document", payload)
+    if len(extracted.strip()) < 40:
+        raise HTTPException(status_code=400, detail="Dosya içeriği indeksleme için en az 40 karakter olmalı.")
+
+    inferred_title = (title or "").strip() or os.path.splitext(file.filename or "Untitled")[0]
+    doc = await upsert_document_with_chunks(
+        db_session=db,
+        user_id=current_user.id,
+        title=inferred_title,
+        content=extracted,
+        source_type="file",
+        source_ref=(source_ref or "").strip() or file.filename,
+        domain=(domain or "").strip() or "product",
+        product=(product or "").strip() or None,
+        language=(language or "tr").strip() or "tr",
+        version_tag=(version_tag or "").strip() or None,
+        tags={},
     )
     chunk_count = db.execute(
         select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.document_id == doc.id)
