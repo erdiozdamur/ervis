@@ -603,7 +603,7 @@ function ChatInterface() {
                 <Bot size={44} className="mx-auto" />
               </div>
               <h1 className="type-headline fade-rise stagger-1 mt-6 text-3xl font-extrabold sm:text-5xl">
-                Komut ver, Ervis sahayı alsın.
+                Komut ver, Ervis halletsin.
               </h1>
               <p className="fade-rise stagger-2 mt-4 max-w-xl text-sm text-[var(--text-muted)] sm:text-base">
                 Hafıza odaklı, bağlamı kaybetmeyen ve güncel bilgiyle çalışan otonom asistan deneyimi.
