@@ -141,7 +141,15 @@ async def retrieve_context(user_id: uuid.UUID, query: str, db_session: Session) 
         
     return "\n".join(context_lines)
 
-async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_context: Optional[str] = None, metadata_context: str = "") -> tuple[str, str]:
+async def answer_query(
+    user_id: uuid.UUID,
+    query: str,
+    db_session: Session,
+    web_context: Optional[str] = None,
+    metadata_context: str = "",
+    knowledge_context: str = "",
+    knowledge_sources: Optional[list] = None,
+) -> tuple[str, str]:
     """
     Retrieves context and uses LLM to generate a natural language answer.
     """
@@ -152,6 +160,7 @@ async def answer_query(user_id: uuid.UUID, query: str, db_session: Session, web_
     current_date = datetime.now().strftime("%d %B %Y %A")
     web_info = f"\n\n[GÜNCEL İNTERNET BİLGİSİ]:\n{web_context}" if web_context else ""
     meta_info = f"\n\n{metadata_context}" if metadata_context else ""
+    knowledge_info = f"\n\n[DOKÜMANTASYON BAĞLAMI]:\n{knowledge_context}" if knowledge_context else ""
     
     system_prompt = f"""Sen Ervis'in akıllı asistanısın. 
 BUGÜNÜN TARİHİ: {current_date}{meta_info}
@@ -172,7 +181,8 @@ Kullanıcının sorusuna cevap verirken sağlanan [SİSTEM HAFIZASI] verilerini 
    - Eğer "[KAYNAK:ESPN-FIXTURE]" geçiyorsa, oradaki eşleşme/tarih bilgisi birincil doğrudur. Kısa ve net cevap ver.
    - Eğer "[KAYNAK:ESPN-FIXTURE-NO-MATCH]" ve "status=NO_MATCH_ON_TARGET_DATE" geçiyorsa, o tarihte maç olmadığını açıkça söyle. Varsa `next_match_date` ve `next_match` bilgisini ekle.
 7. KAYNAK ŞEFFAFLIĞI: Dinamik cevap verirken en az bir kaynağı kısa şekilde an (site adı veya link).
-8. HAFIZA DOĞRULAMA: [SİSTEM HAFIZASI] içinde [UncertainFact] satırları varsa, kullanıcıya kısa bir doğrulama sorusu sor (örn. "Bunu hala geçerli kabul edelim mi?").
+8. DOKÜMAN KULLANIMI: [DOKÜMANTASYON BAĞLAMI] varsa cevabını bu bağlama dayandır, uydurma yapma. Kritik iddialarda doküman başlığını parantez içinde an.
+9. HAFIZA DOĞRULAMA: [SİSTEM HAFIZASI] içinde [UncertainFact] satırları varsa, kullanıcıya kısa bir doğrulama sorusu sor (örn. "Bunu hala geçerli kabul edelim mi?").
 
 Cevaplarını her zaman profesyonel, zeki ve Türkçe olarak ver.
 """
@@ -181,7 +191,10 @@ Cevaplarını her zaman profesyonel, zeki ve Türkçe olarak ver.
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"[SİSTEM HAFIZASI]:\n{context}{web_info}\n\n[KULLANICI SORUSU]:\n{query}"}
+            {
+                "role": "user",
+                "content": f"[SİSTEM HAFIZASI]:\n{context}{web_info}{knowledge_info}\n\n[KULLANICI SORUSU]:\n{query}",
+            }
         ],
         temperature=0.0
     )
