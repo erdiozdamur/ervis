@@ -32,6 +32,13 @@ from services.web_search_agent import search_the_web
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
 from services.memory_observer import passive_memory_observation
 from models import User, Base, ChatMessage, Conversation, MemoryFact
+from models import KnowledgeChunk
+from services.knowledge_service import (
+    upsert_document_with_chunks,
+    retrieve_knowledge_context,
+    list_documents,
+    delete_document,
+)
 
 # Database Setup
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -372,6 +379,7 @@ class ChatResponse(BaseModel):
     message: str
     model_used: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None
     conversation_id: Optional[uuid.UUID] = None
 
 
@@ -414,6 +422,32 @@ class MemoryMetricsResponse(BaseModel):
     uncertain_facts: int
     stale_fact_ratio: float
     contradiction_rate: float
+
+
+class KnowledgeDocumentIngestRequest(BaseModel):
+    title: str
+    content: str
+    source_type: str = "manual"
+    source_ref: Optional[str] = None
+    domain: Optional[str] = None
+    product: Optional[str] = None
+    language: Optional[str] = "tr"
+    version_tag: Optional[str] = None
+    tags: Optional[Dict[str, Any]] = None
+
+
+class KnowledgeDocumentItem(BaseModel):
+    id: uuid.UUID
+    title: str
+    source_type: str
+    source_ref: Optional[str]
+    domain: Optional[str]
+    product: Optional[str]
+    language: Optional[str]
+    version_tag: Optional[str]
+    summary: Optional[str]
+    chunk_count: int
+    updated_at: datetime
 
 def _store_chat_history_now(
     db: Session,
@@ -740,6 +774,90 @@ async def memory_metrics(
         contradiction_rate=round(contradiction_rate, 4),
     )
 
+
+@app.post("/api/knowledge/documents", response_model=KnowledgeDocumentItem)
+async def ingest_knowledge_document(
+    request: KnowledgeDocumentIngestRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    doc = await upsert_document_with_chunks(
+        db_session=db,
+        user_id=current_user.id,
+        title=request.title,
+        content=request.content,
+        source_type=request.source_type,
+        source_ref=request.source_ref,
+        domain=request.domain,
+        product=request.product,
+        language=request.language,
+        version_tag=request.version_tag,
+        tags=request.tags or {},
+    )
+    chunk_count = db.execute(
+        select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.document_id == doc.id)
+    ).scalar_one()
+    return KnowledgeDocumentItem(
+        id=doc.id,
+        title=doc.title,
+        source_type=doc.source_type,
+        source_ref=doc.source_ref,
+        domain=doc.domain,
+        product=doc.product,
+        language=doc.language,
+        version_tag=doc.version_tag,
+        summary=doc.summary,
+        chunk_count=int(chunk_count),
+        updated_at=doc.updated_at,
+    )
+
+
+@app.get("/api/knowledge/documents", response_model=List[KnowledgeDocumentItem])
+async def get_knowledge_documents(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    docs = list_documents(db_session=db, user_id=current_user.id, limit=limit)
+    doc_ids = [d.id for d in docs]
+    counts: Dict[uuid.UUID, int] = {}
+    if doc_ids:
+        rows = db.execute(
+            select(KnowledgeChunk.document_id, func.count().label("chunk_count"))
+            .where(KnowledgeChunk.document_id.in_(doc_ids))
+            .group_by(KnowledgeChunk.document_id)
+        ).all()
+        counts = {row.document_id: int(row.chunk_count) for row in rows}
+
+    return [
+        KnowledgeDocumentItem(
+            id=doc.id,
+            title=doc.title,
+            source_type=doc.source_type,
+            source_ref=doc.source_ref,
+            domain=doc.domain,
+            product=doc.product,
+            language=doc.language,
+            version_tag=doc.version_tag,
+            summary=doc.summary,
+            chunk_count=counts.get(doc.id, 0),
+            updated_at=doc.updated_at,
+        )
+        for doc in docs
+    ]
+
+
+@app.delete("/api/knowledge/documents/{document_id}")
+async def remove_knowledge_document(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = delete_document(db_session=db, user_id=current_user.id, document_id=document_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"message": "Knowledge document deleted"}
+
 @app.post("/api/auth/register")
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if user exists
@@ -837,6 +955,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     intent=intent_response.intent.value,
                     message=cached_response,
                     model_used="pgvector-cache",
+                    knowledge_sources=[],
                     conversation_id=conversation.id,
                 )
             
@@ -857,7 +976,28 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
             
-            answer, final_model = await answer_query(user_id, request.message, db_session=db, web_context=web_context, metadata_context=meta_str)
+            knowledge_result = await retrieve_knowledge_context(
+                db_session=db,
+                user_id=user_id,
+                query=request.message,
+                metadata=request.metadata or {},
+                top_k=8,
+            )
+            knowledge_context = knowledge_result.get("context", "")
+            source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
+            if source_titles:
+                unique_titles = list(dict.fromkeys(source_titles))[:5]
+                meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
+
+            answer, final_model = await answer_query(
+                user_id,
+                request.message,
+                db_session=db,
+                web_context=web_context,
+                metadata_context=meta_str,
+                knowledge_context=knowledge_context,
+                knowledge_sources=knowledge_result.get("sources", []),
+            )
             
             # 4. Save to cache (Mandatory Write Bypass inside save_to_cache)
             await save_to_cache(user_id, request.message, answer, db_session=db)
@@ -879,6 +1019,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 intent=intent_response.intent.value,
                 message=answer,
                 model_used=effective_model,
+                knowledge_sources=knowledge_result.get("sources", []),
                 conversation_id=conversation.id,
             )
             
