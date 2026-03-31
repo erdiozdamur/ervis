@@ -26,6 +26,7 @@ import Register from './components/Register';
 const API_URL = '/api/chat';
 const CONVERSATIONS_URL = '/api/chat/conversations';
 const KNOWLEDGE_DOCUMENTS_URL = '/api/knowledge/documents';
+const KNOWLEDGE_DOCUMENT_UPLOAD_URL = '/api/knowledge/documents/upload';
 const CONVERSATION_FETCH_LIMIT = 24;
 const HISTORY_FETCH_LIMIT = 40;
 const UI_MESSAGE_LIMIT = 60;
@@ -66,6 +67,7 @@ function ChatInterface() {
   const [isKnowledgeFileReading, setIsKnowledgeFileReading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState('');
   const [knowledgeSuccess, setKnowledgeSuccess] = useState('');
+  const [hasKnowledgeLoadAttempted, setHasKnowledgeLoadAttempted] = useState(false);
   const [docForm, setDocForm] = useState({
     title: '',
     domain: 'product',
@@ -99,15 +101,18 @@ function ChatInterface() {
     return response.data;
   };
 
-  const loadKnowledgeDocuments = async () => {
+  const loadKnowledgeDocuments = async ({ suppressError = false } = {}) => {
     setIsKnowledgeLoading(true);
-    setKnowledgeError('');
+    if (!suppressError) setKnowledgeError('');
     try {
       const response = await axios.get(`${KNOWLEDGE_DOCUMENTS_URL}?limit=100`);
       setKnowledgeDocs(response.data || []);
     } catch {
-      setKnowledgeError('Dokümanlar yüklenirken bir sorun oluştu.');
+      if (!suppressError) {
+        setKnowledgeError('Dokümanlar yüklenirken bir sorun oluştu.');
+      }
     } finally {
+      setHasKnowledgeLoadAttempted(true);
       setIsKnowledgeLoading(false);
     }
   };
@@ -161,9 +166,9 @@ function ChatInterface() {
     }
 
     const extension = (file.name.split('.').pop() || '').toLowerCase();
-    const supportedExtensions = ['txt', 'md', 'markdown', 'csv', 'json', 'log'];
+    const supportedExtensions = ['txt', 'md', 'markdown', 'csv', 'json', 'log', 'pdf'];
     if (!supportedExtensions.includes(extension)) {
-      setKnowledgeError('Yalnızca txt, md, csv, json ve log dosyaları destekleniyor.');
+      setKnowledgeError('Yalnızca txt, md, csv, json, log ve pdf dosyaları destekleniyor.');
       return;
     }
 
@@ -171,6 +176,30 @@ function ChatInterface() {
     setKnowledgeSuccess('');
     setIsKnowledgeFileReading(true);
     try {
+      if (extension === 'pdf') {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', docForm.title.trim() || file.name.replace(/\.[^/.]+$/, ''));
+        formData.append('domain', docForm.domain || 'product');
+        formData.append('product', docForm.product.trim());
+        formData.append('version_tag', docForm.version_tag.trim());
+        formData.append('language', docForm.language || 'tr');
+        formData.append('source_ref', docForm.source_ref.trim());
+
+        const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
+        const created = response.data;
+        setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+        setKnowledgeSuccess(`PDF işlendi: ${created.chunk_count} parça indekslendi.`);
+        setDocForm((prev) => ({
+          ...prev,
+          title: '',
+          content: '',
+          source_type: 'file',
+          source_ref: file.name,
+        }));
+        return;
+      }
+
       const text = await file.text();
       const normalized = (text || '').trim();
       if (normalized.length < 40) {
@@ -456,6 +485,10 @@ function ChatInterface() {
 
   useEffect(() => {
     if (viewMode !== 'knowledge') return;
+    if (!hasKnowledgeLoadAttempted) {
+      loadKnowledgeDocuments({ suppressError: true });
+      return;
+    }
     loadKnowledgeDocuments();
   }, [viewMode]);
 
@@ -965,7 +998,7 @@ function ChatInterface() {
                       {isKnowledgeFileReading ? 'Dosya okunuyor...' : 'Dosya Yükle'}
                       <input
                         type="file"
-                        accept=".txt,.md,.markdown,.csv,.json,.log,text/plain,text/markdown,text/csv,application/json"
+                        accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,text/plain,text/markdown,text/csv,application/json,application/pdf"
                         className="hidden"
                         onChange={handleKnowledgeFileSelect}
                         disabled={isKnowledgeFileReading || isKnowledgeSubmitting}
