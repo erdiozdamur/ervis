@@ -852,6 +852,7 @@ function ChatInterface() {
               )}
               <div ref={messagesEndRef} />
             </div>
+          )}
           </section>
         ) : (
           <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
