@@ -47,3 +47,17 @@ Use one of:
 - `.env.production.example`
 
 Copy the template to your real env file and replace placeholder secrets.
+
+## 5) Test-Prod parity workflow
+
+When test database is behind production schema:
+
+1. Set these variables:
+   - `PROD_DATABASE_URL`
+   - `TEST_DATABASE_URL`
+2. Run table-level parity report:
+   - `python check_env_parity.py`
+3. If test is missing tables and you want a full mirror of production schema on test, run:
+   - `CONFIRM_SYNC=YES ./sync_test_db_with_prod.sh`
+
+> `sync_test_db_with_prod.sh` drops and recreates the `public` schema on **test** database before importing production schema.
