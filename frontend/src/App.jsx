@@ -667,7 +667,7 @@ function ChatInterface() {
                 Hafıza odaklı, bağlamı kaybetmeyen ve güncel bilgiyle çalışan otonom asistan deneyimi.
               </p>
               <div className="mt-7 flex flex-wrap justify-center gap-2 sm:gap-3">
-                {['Bugün İstanbul hava nasıl?', 'Bu hafta görevlerim neler?', 'Product Owner için sprint ritmi öner'].map((sample) => (
+                {["Bugün İstanbul'da hava nasıl?", 'Bu hafta görevlerim neler?', 'Product Owner için sprint ritmi önerisi ver.'].map((sample) => (
                   <button
                     key={sample}
                     type="button"
