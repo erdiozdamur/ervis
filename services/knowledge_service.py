@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +20,7 @@ THRESHOLD_CONFIRM_MAX = float(os.getenv("KNOWLEDGE_SCORE_CONFIRM_MAX", "0.70"))
 HIGH_CONFIDENCE_TIE_GAP = float(os.getenv("KNOWLEDGE_SCORE_TIE_GAP", "0.08"))
 MIN_SEMANTIC_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_SEMANTIC", "0.58"))
 MIN_LEXICAL_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_LEXICAL", "0.18"))
+KNOWLEDGE_EMBEDDING_MODEL = os.getenv("KNOWLEDGE_EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 def get_openai_client() -> AsyncOpenAI:
@@ -35,6 +37,14 @@ def _normalize_text(text: str) -> str:
     normalized = re.sub(r"\r\n?", "\n", text or "")
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     return normalized.strip()
+
+
+def _safe_int(value: Any, default: int, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(parsed, max_value))
 
 
 def _tokenize_for_overlap(text: str) -> List[str]:
@@ -175,6 +185,121 @@ def split_into_semantic_chunks(content: str, max_chars: int = 1800, overlap_char
     return chunks
 
 
+def _default_embedding_profile(content: str) -> Dict[str, Any]:
+    text = _normalize_text(content)
+    length = len(text)
+    heading_count = len(re.findall(r"(?m)^(#{1,6}\s+.+|\d+(\.\d+)*\s+.+)$", text))
+
+    if length <= 1800:
+        chunk_max = 1200
+        overlap = 120
+    elif length <= 12000:
+        chunk_max = 1600
+        overlap = 200
+    else:
+        chunk_max = 2200
+        overlap = 280
+
+    if heading_count >= 8:
+        overlap = min(overlap + 40, 320)
+
+    return {
+        "model": KNOWLEDGE_EMBEDDING_MODEL,
+        "chunk_max_chars": chunk_max,
+        "chunk_overlap_chars": overlap,
+        "prepend_title_to_chunk": True,
+        "prepend_section_to_chunk": True,
+        "keyword_hint_density": "medium",
+        "reason": "fallback-heuristic",
+    }
+
+
+async def choose_embedding_profile_for_document(
+    title: str,
+    content: str,
+    domain: Optional[str],
+    product: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Closed-box embedding ayarlarını doküman içeriğine göre otomatik belirleyen mini agent.
+    """
+    fallback = _default_embedding_profile(content)
+    client = get_openai_client()
+    excerpt = _normalize_text(content)[:9000]
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Sen bir Embedding Indexing Agent'sin. "
+                        "Amaç: verilen dokümanı indekslemek için en doğru ayarları seçmek. "
+                        "Sadece geçerli JSON döndür."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Başlık: {title}\n"
+                        f"Domain: {domain or 'belirtilmedi'}\n"
+                        f"Ürün: {product or 'belirtilmedi'}\n"
+                        f"Doküman uzunluğu: {len(content)} karakter\n\n"
+                        f"İçerik örneği:\n{excerpt}\n\n"
+                        "JSON formatı: "
+                        '{"model":"text-embedding-3-small","chunk_max_chars":1600,'
+                        '"chunk_overlap_chars":220,"prepend_title_to_chunk":true,'
+                        '"prepend_section_to_chunk":true,"keyword_hint_density":"low|medium|high",'
+                        '"reason":"kısa gerekçe"}'
+                    ),
+                },
+            ],
+            temperature=0.0,
+            max_tokens=260,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return fallback
+        return {
+            "model": str(parsed.get("model") or KNOWLEDGE_EMBEDDING_MODEL),
+            "chunk_max_chars": _safe_int(parsed.get("chunk_max_chars"), fallback["chunk_max_chars"], 900, 2600),
+            "chunk_overlap_chars": _safe_int(parsed.get("chunk_overlap_chars"), fallback["chunk_overlap_chars"], 80, 400),
+            "prepend_title_to_chunk": bool(parsed.get("prepend_title_to_chunk", True)),
+            "prepend_section_to_chunk": bool(parsed.get("prepend_section_to_chunk", True)),
+            "keyword_hint_density": str(parsed.get("keyword_hint_density") or fallback["keyword_hint_density"]).lower(),
+            "reason": str(parsed.get("reason") or "llm-profile"),
+        }
+    except Exception:
+        return fallback
+
+
+def _compose_embedding_text(
+    chunk_text: str,
+    title: str,
+    section_title: Optional[str],
+    domain: Optional[str],
+    product: Optional[str],
+    profile: Dict[str, Any],
+) -> str:
+    parts: List[str] = []
+    if profile.get("prepend_title_to_chunk"):
+        parts.append(f"Doküman: {title}")
+    if profile.get("prepend_section_to_chunk") and section_title:
+        parts.append(f"Bölüm: {section_title}")
+    if domain:
+        parts.append(f"Alan: {domain}")
+    if product:
+        parts.append(f"Ürün: {product}")
+    density = str(profile.get("keyword_hint_density") or "medium")
+    if density == "high":
+        parts.append("İpucu: kritik terimler ve prosedürel adımlar önceliklidir.")
+    elif density == "low":
+        parts.append("İpucu: doğal içerik öncelikli, bağlam enjeksiyonu minimal.")
+    parts.append(chunk_text)
+    return "\n".join(parts).strip()
+
+
 async def summarize_document_for_indexing(title: str, content: str, domain: Optional[str], product: Optional[str]) -> str:
     client = get_openai_client()
     truncated = content[:7000]
@@ -265,6 +390,15 @@ async def upsert_document_with_chunks(
         raise ValueError("content çok kısa, en az 40 karakter olmalı")
 
     summary = await summarize_document_for_indexing(cleaned_title, cleaned_content, domain, product)
+    embedding_profile = await choose_embedding_profile_for_document(cleaned_title, cleaned_content, domain, product)
+    merged_tags = dict(tags or {})
+    merged_tags["indexing_profile"] = {
+        "model": embedding_profile.get("model"),
+        "chunk_max_chars": embedding_profile.get("chunk_max_chars"),
+        "chunk_overlap_chars": embedding_profile.get("chunk_overlap_chars"),
+        "keyword_hint_density": embedding_profile.get("keyword_hint_density"),
+        "reason": embedding_profile.get("reason"),
+    }
 
     doc = KnowledgeDocument(
         user_id=user_id,
@@ -275,20 +409,35 @@ async def upsert_document_with_chunks(
         product=product,
         language=language,
         version_tag=version_tag,
-        tags=tags or {},
+        tags=merged_tags,
         summary=summary,
     )
     db_session.add(doc)
     db_session.commit()
     db_session.refresh(doc)
 
-    chunks = split_into_semantic_chunks(cleaned_content)
+    chunks = split_into_semantic_chunks(
+        cleaned_content,
+        max_chars=int(embedding_profile["chunk_max_chars"]),
+        overlap_chars=int(embedding_profile["chunk_overlap_chars"]),
+    )
     if not chunks:
         raise ValueError("chunk üretilemedi")
 
     rows: List[KnowledgeChunk] = []
     for c in chunks:
-        emb = await get_embedding(c["content"])
+        embedding_input = _compose_embedding_text(
+            chunk_text=c["content"],
+            title=cleaned_title,
+            section_title=c.get("section_title"),
+            domain=domain,
+            product=product,
+            profile=embedding_profile,
+        )
+        emb = await get_embedding(
+            embedding_input,
+            model=str(embedding_profile.get("model") or KNOWLEDGE_EMBEDDING_MODEL),
+        )
         rows.append(
             KnowledgeChunk(
                 document_id=doc.id,
@@ -303,6 +452,7 @@ async def upsert_document_with_chunks(
                     "product": product,
                     "source_type": source_type,
                     "version_tag": version_tag,
+                    "embedding_model": embedding_profile.get("model"),
                 },
             )
         )
