@@ -5,6 +5,7 @@ import {
   Bot,
   BookOpen,
   ChevronDown,
+  Command,
   Database,
   FileText,
   ListChecks,
