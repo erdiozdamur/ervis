@@ -1143,7 +1143,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
         elif intent_response.intent == IntentType.EXECUTE_TOOL:
             # External Tool flow: Select and run appropriate tool
             print(f"DEBUG: Entering EXECUTE_TOOL flow")
-            result, final_model = await execute_tool_for_user(user_id, request.message, db_session=db)
+            result, final_model, tool_sources = await execute_tool_for_user(
+                user_id,
+                request.message,
+                db_session=db,
+                metadata=request.metadata or {},
+            )
             print(f"DEBUG: Tool execution result: {result}")
             
             # Dual-Track: Even after tool execution, extract memory in background
@@ -1166,6 +1171,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 intent=intent_response.intent.value,
                 message=result,
                 model_used=final_model,
+                knowledge_sources=tool_sources,
                 conversation_id=conversation.id,
             )
             

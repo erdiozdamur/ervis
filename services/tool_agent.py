@@ -1,7 +1,7 @@
 import os
 import uuid
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Task
+from services.knowledge_service import retrieve_knowledge_context
 
 # load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
@@ -186,7 +187,31 @@ KURALLAR:
         return tool_result
 
 
-async def generate_direct_content(user_input: str, requires_unavailable_integration: bool) -> str:
+def _format_knowledge_context_for_prompt(knowledge_result: dict[str, Any]) -> str:
+    sources = knowledge_result.get("sources", []) or []
+    context = (knowledge_result.get("context") or "").strip()
+    if not sources or not context:
+        return ""
+
+    top_sources = []
+    for source in sources[:3]:
+        title = source.get("title") or "Bilinmeyen Kaynak"
+        domain = source.get("domain") or "n/a"
+        product = source.get("product") or "n/a"
+        top_sources.append(f"- {title} (domain={domain}, product={product})")
+
+    return (
+        "\n\n[HIZLI BAĞLAM KONTROLÜ - KULLAN]:\n"
+        + "\n".join(top_sources)
+        + f"\n\n[BAĞLAM METNİ]:\n{context[:2200]}"
+    )
+
+
+async def generate_direct_content(
+    user_input: str,
+    requires_unavailable_integration: bool,
+    knowledge_result: Optional[dict[str, Any]] = None,
+) -> str:
     """
     Generate directly requested output (mail, jira text, announcement, etc.)
     without pretending a real external action was performed.
@@ -198,6 +223,8 @@ ve gerçek entegrasyon yoksa ilk satırda kısa bir şeffaflık notu ver:
 "Bunu ilgili sisteme otomatik işleyemiyorum; ama aşağıda doğrudan kullanabileceğin içeriği hazırladım."
 """ if requires_unavailable_integration else ""
 
+    knowledge_context = _format_knowledge_context_for_prompt(knowledge_result or {})
+
     system_prompt = f"""Sen Ervis'sin.
 Görev: Kullanıcının istediği çıktıyı DOĞRUDAN üret.
 
@@ -206,7 +233,9 @@ Kurallar:
 2. Asla yapılmayan bir işlemi yapılmış gibi anlatma ("oluşturdum", "gönderdim", "açtım" deme).
 3. Kısa bir girişten sonra esas çıktıyı ver; gereksiz açıklama yapma.
 4. Sadece Türkçe cevap ver.
+5. [HIZLI BAĞLAM KONTROLÜ - KULLAN] verilmişse çıktı içeriğini bu bağlama dayandır. Bağlam dışı iddia üretme.
 {transparency_note}
+{knowledge_context}
 """
 
     response = await client.chat.completions.create(
@@ -222,18 +251,31 @@ Kurallar:
 
 
 # 4. TOOL EXECUTION LOGIC
-async def execute_tool_for_user(user_id: uuid.UUID, user_input: str, db_session: Session) -> tuple[str, str]:
+async def execute_tool_for_user(
+    user_id: uuid.UUID,
+    user_input: str,
+    db_session: Session,
+    metadata: Optional[dict[str, Any]] = None,
+) -> tuple[str, str, list[dict[str, Any]]]:
     client = get_openai_client()
 
     decision = await decide_tool_handling(user_input)
     print(f"DEBUG: Tool handling decision={decision.mode}, unavailable_integration={decision.requires_unavailable_integration}")
 
     if decision.mode != "EXECUTE_AVAILABLE_TOOL":
+        knowledge_result = await retrieve_knowledge_context(
+            db_session=db_session,
+            user_id=user_id,
+            query=user_input,
+            metadata=metadata or {},
+            top_k=3,
+        )
         direct_response = await generate_direct_content(
             user_input=user_input,
             requires_unavailable_integration=decision.requires_unavailable_integration,
+            knowledge_result=knowledge_result,
         )
-        return direct_response, "gpt-4o-mini"
+        return direct_response, "gpt-4o-mini", knowledge_result.get("sources", [])
 
     system_prompt = """Sen Ervis'in araç kullanım katmanısın. Kullanıcının isteğine göre uygun aracı seç ve çalıştır.
 HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim", "listele", "göster", "neler var?", "var mı?" gibi ifadeler kullanırsa mutlaka 'show_tasks' aracını çağır.
@@ -268,10 +310,10 @@ Sadece gerçekten mevcut araçlarla yapılabilen isteklerde tool çağır."""
 
             if raw_result:
                 natural_response = await generate_natural_response(user_input, function_name, raw_result)
-                return natural_response, response.model
+                return natural_response, response.model, []
 
     fallback = await generate_direct_content(
         user_input=user_input,
         requires_unavailable_integration=False,
     )
-    return fallback, response.model
+    return fallback, response.model, []
