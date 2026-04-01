@@ -1,5 +1,6 @@
 import os
 import io
+import base64
 import uuid
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -26,7 +27,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from openai import AuthenticationError as OpenAIAuthenticationError
 from pypdf import PdfReader
 
-from services.llm_router import analyze_user_input, IntentType
+from services.llm_router import analyze_user_input, IntentType, get_openai_client
 from services.memory_agent import extract_knowledge, store_knowledge
 from services.retrieval_agent import answer_query
 from services.tool_agent import execute_tool_for_user
@@ -521,6 +522,35 @@ def _compose_message_with_attachments(base_message: str, attachments: Optional[L
         return safe_message
 
     return f"{safe_message}\n\n[EKLER]\n" + "\n\n".join(blocks)
+
+
+async def _extract_text_from_image_with_vision(payload: bytes, mime_type: str) -> str:
+    encoded = base64.b64encode(payload).decode("utf-8")
+    client = get_openai_client()
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Görseldeki metinleri ve kritik bilgileri Türkçe olarak çıkart. "
+                    "Önce OCR metnini, sonra kısa bağlam özetini ver."
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Bu görselde ne var? Metinleri eksiksiz dök."},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+                    },
+                ],
+            },
+        ],
+        temperature=0.0,
+    )
+    return (response.choices[0].message.content or "").strip()
 
 def _store_chat_history_now(
     db: Session,
@@ -1042,15 +1072,23 @@ async def extract_chat_attachment(
         raise HTTPException(status_code=400, detail="Dosya boyutu en fazla 5MB olabilir.")
 
     ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "").lower()
+    image_extensions = {"png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"}
     supported_extensions = {
         "txt", "md", "markdown", "csv", "json", "log", "pdf", "html", "xml",
         "yaml", "yml", "ini", "cfg", "sql", "py", "js", "ts", "tsx", "jsx",
         "java", "go", "rs", "rb", "php", "c", "h", "cpp", "hpp", "sh",
     }
-    if ext and ext not in supported_extensions:
+    if ext and ext not in supported_extensions and ext not in image_extensions:
         raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya türü: .{ext}")
 
-    extracted = _extract_text_from_uploaded_file(file.filename or "attachment", payload)
+    is_image = ext in image_extensions or (file.content_type or "").lower().startswith("image/")
+    if is_image:
+        extracted = await _extract_text_from_image_with_vision(
+            payload=payload,
+            mime_type=file.content_type or "image/png",
+        )
+    else:
+        extracted = _extract_text_from_uploaded_file(file.filename or "attachment", payload)
     if len(extracted) < 5:
         raise HTTPException(status_code=400, detail="Dosyadan anlamlı metin çıkarılamadı.")
 

@@ -5,7 +5,6 @@ import {
   Bot,
   BookOpen,
   ChevronDown,
-  Command,
   Database,
   FileText,
   ListChecks,
@@ -1130,9 +1129,6 @@ function ChatInterface() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="hidden rounded-xl bg-[rgba(107,212,255,0.14)] p-2 text-[var(--accent-2)] sm:block">
-                    <Command size={18} />
-                  </div>
                   <button
                     type="button"
                     onClick={() => attachmentInputRef.current?.click()}
@@ -1148,7 +1144,7 @@ function ChatInterface() {
                     multiple
                     className="hidden"
                     onChange={handleChatAttachmentSelect}
-                    accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,.html,.xml,.yaml,.yml,.ini,.cfg,.sql,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.rb,.php,.c,.h,.cpp,.hpp,.sh,text/plain,text/markdown,text/csv,application/json,application/pdf,text/html,application/xml,text/xml"
+                    accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,.html,.xml,.yaml,.yml,.ini,.cfg,.sql,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.rb,.php,.c,.h,.cpp,.hpp,.sh,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff,text/plain,text/markdown,text/csv,application/json,application/pdf,text/html,application/xml,text/xml,image/png,image/jpeg,image/webp,image/gif,image/bmp,image/tiff"
                   />
                   <textarea
                     ref={inputRef}
