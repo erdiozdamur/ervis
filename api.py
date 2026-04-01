@@ -112,6 +112,10 @@ def _init_database():
                     ADD COLUMN IF NOT EXISTS conversation_id UUID;
                 """))
                 conn.execute(text("""
+                    ALTER TABLE chat_messages
+                    ADD COLUMN IF NOT EXISTS knowledge_sources JSONB;
+                """))
+                conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_conversations_user_last_message_at
                     ON conversations (user_id, last_message_at DESC);
                 """))
@@ -310,6 +314,7 @@ def store_chat_pair(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     """
     Persist a compact chat history while keeping a strict per-user cap.
@@ -346,6 +351,7 @@ def store_chat_pair(
                 content=safe_assistant_message,
                 intent=intent,
                 model_used=model_used,
+                knowledge_sources=knowledge_sources or [],
                 created_at=datetime.now(timezone.utc) + timedelta(microseconds=1),
             )
         )
@@ -440,6 +446,7 @@ class ChatHistoryItem(BaseModel):
     content: str
     model_used: Optional[str] = None
     intent: Optional[str] = None
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None
     timestamp: datetime
 
 class UserRegister(BaseModel):
@@ -584,6 +591,7 @@ def _store_chat_history_now(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     store_chat_pair(
         db,
@@ -593,6 +601,7 @@ def _store_chat_history_now(
         assistant_message,
         intent,
         model_used,
+        knowledge_sources,
     )
 
 
@@ -821,6 +830,7 @@ async def get_conversation_messages(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
+            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -876,6 +886,7 @@ async def get_chat_history(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
+            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -1299,6 +1310,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     confirmation_msg,
                     intent_response.intent.value,
                     "knowledge-confirmation-gate",
+                    knowledge_result.get("sources", []),
                 )
                 return ChatResponse(
                     intent=intent_response.intent.value,
@@ -1332,6 +1344,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 answer,
                 intent_response.intent.value,
                 effective_model,
+                knowledge_result.get("sources", []),
             )
             
             return ChatResponse(
@@ -1371,6 +1384,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 result,
                 intent_response.intent.value,
                 final_model,
+                tool_sources,
             )
             
             # Flush relevant cache because system state changed (Smart clearing)
