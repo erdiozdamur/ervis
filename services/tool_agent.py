@@ -152,6 +152,22 @@ Kurallar:
     return response.choices[0].message.parsed
 
 
+def _format_recent_messages_for_prompt(recent_messages: Optional[list[dict[str, str]]]) -> str:
+    if not recent_messages:
+        return ""
+
+    lines: list[str] = []
+    for item in recent_messages[-6:]:
+        role = "Kullanıcı" if item.get("role") == "user" else "Asistan"
+        content = (item.get("content") or "").strip()
+        if content:
+            lines.append(f"{role}: {content[:1000]}")
+
+    if not lines:
+        return ""
+    return "\n\n[SON KONUŞMA BAĞLAMI]:\n" + "\n".join(lines)
+
+
 # 3. CONVERSATIONAL REFINER
 async def generate_natural_response(user_input: str, tool_name: str, tool_result: str) -> str:
     """
@@ -211,6 +227,7 @@ async def generate_direct_content(
     user_input: str,
     requires_unavailable_integration: bool,
     knowledge_result: Optional[dict[str, Any]] = None,
+    recent_messages: Optional[list[dict[str, str]]] = None,
 ) -> str:
     """
     Generate directly requested output (mail, jira text, announcement, etc.)
@@ -224,6 +241,7 @@ ve gerçek entegrasyon yoksa ilk satırda kısa bir şeffaflık notu ver:
 """ if requires_unavailable_integration else ""
 
     knowledge_context = _format_knowledge_context_for_prompt(knowledge_result or {})
+    recent_context = _format_recent_messages_for_prompt(recent_messages)
 
     system_prompt = f"""Sen Ervis'sin.
 Görev: Kullanıcının istediği çıktıyı DOĞRUDAN üret.
@@ -245,8 +263,11 @@ Kurallar:
    - Önce kısa başlık satırı ver (gerekliyse),
    - Sonra doğrudan kopyalanabilir tek blok final içerik ver.
    - İkinci bir "ek bilgi" bloğu sadece kullanıcı isterse ekle.
+9. [SON KONUŞMA BAĞLAMI] varsa ve kullanıcı referanslı bir güncelleme isterse
+   (örn: "buna şunu ekle", "öncekine göre güncelle"), en son asistan çıktısını temel alıp revize et.
 {transparency_note}
 {knowledge_context}
+{recent_context}
 """
 
     response = await client.chat.completions.create(
@@ -267,6 +288,7 @@ async def execute_tool_for_user(
     user_input: str,
     db_session: Session,
     metadata: Optional[dict[str, Any]] = None,
+    recent_messages: Optional[list[dict[str, str]]] = None,
 ) -> tuple[str, str, list[dict[str, Any]]]:
     client = get_openai_client()
 
@@ -285,6 +307,7 @@ async def execute_tool_for_user(
             user_input=user_input,
             requires_unavailable_integration=decision.requires_unavailable_integration,
             knowledge_result=knowledge_result,
+            recent_messages=recent_messages,
         )
         return direct_response, "gpt-4o-mini", knowledge_result.get("sources", [])
 
@@ -326,5 +349,6 @@ Sadece gerçekten mevcut araçlarla yapılabilen isteklerde tool çağır."""
     fallback = await generate_direct_content(
         user_input=user_input,
         requires_unavailable_integration=False,
+        recent_messages=recent_messages,
     )
     return fallback, response.model, []
