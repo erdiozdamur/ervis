@@ -571,7 +571,18 @@ def _backfill_legacy_conversations():
         db.close()
 
 
-_init_database()
+_startup_init_error: Optional[str] = None
+
+
+@app.on_event("startup")
+def startup_initialize_database():
+    global _startup_init_error
+    try:
+        _init_database()
+        _startup_init_error = None
+    except Exception as exc:
+        _startup_init_error = str(exc)
+        print(f"❌ Startup database initialization failed: {_startup_init_error}")
 
 @app.get("/healthz")
 def healthz():
@@ -582,6 +593,8 @@ def healthz():
 @app.get("/readyz")
 def readyz(db: Session = Depends(get_db)):
     """Readiness probe that verifies database connectivity."""
+    if _startup_init_error:
+        raise HTTPException(status_code=503, detail=f"startup init failed: {_startup_init_error}")
     db.execute(text("SELECT 1"))
     return {"status": "ready"}
 
