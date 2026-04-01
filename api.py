@@ -112,6 +112,10 @@ def _init_database():
                     ADD COLUMN IF NOT EXISTS conversation_id UUID;
                 """))
                 conn.execute(text("""
+                    ALTER TABLE chat_messages
+                    ADD COLUMN IF NOT EXISTS knowledge_sources JSONB;
+                """))
+                conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_conversations_user_last_message_at
                     ON conversations (user_id, last_message_at DESC);
                 """))
@@ -310,6 +314,7 @@ def store_chat_pair(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     """
     Persist a compact chat history while keeping a strict per-user cap.
@@ -346,6 +351,7 @@ def store_chat_pair(
                 content=safe_assistant_message,
                 intent=intent,
                 model_used=model_used,
+                knowledge_sources=knowledge_sources or [],
                 created_at=datetime.now(timezone.utc) + timedelta(microseconds=1),
             )
         )
@@ -440,6 +446,7 @@ class ChatHistoryItem(BaseModel):
     content: str
     model_used: Optional[str] = None
     intent: Optional[str] = None
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None
     timestamp: datetime
 
 class UserRegister(BaseModel):
@@ -544,6 +551,36 @@ def _is_explicit_memory_query(message: str) -> bool:
     return any(cue in text for cue in memory_cues)
 
 
+def _is_explicit_document_query(message: str) -> bool:
+    text = (message or "").lower()
+    doc_cues = [
+        "doküman",
+        "döküman",
+        "intranet",
+        "wiki",
+        "kb",
+        "knowledge",
+        "bu belgede",
+        "dokümanda",
+        "içerik sisteminde",
+        "manual",
+        "runbook",
+        "policy",
+        "prosedür",
+    ]
+    return any(cue in text for cue in doc_cues)
+
+
+def _should_attempt_knowledge_retrieval(
+    message: str,
+    intent: IntentType,
+    confidence_score: float,
+) -> bool:
+    if intent == IntentType.QUERY_KNOWLEDGE:
+        return confidence_score >= 0.45 or _is_explicit_memory_query(message) or _is_explicit_document_query(message)
+    return _is_explicit_memory_query(message) or _is_explicit_document_query(message)
+
+
 def _should_gate_for_clarification(intent: IntentType, confidence_score: float) -> bool:
     return intent in HIGH_RISK_INTENTS and confidence_score < INTENT_CONFIDENCE_THRESHOLD
 
@@ -584,6 +621,7 @@ def _store_chat_history_now(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
+    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     store_chat_pair(
         db,
@@ -593,6 +631,7 @@ def _store_chat_history_now(
         assistant_message,
         intent,
         model_used,
+        knowledge_sources,
     )
 
 
@@ -821,6 +860,7 @@ async def get_conversation_messages(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
+            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -876,6 +916,7 @@ async def get_chat_history(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
+            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -1196,6 +1237,15 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 conversation_id=conversation.id,
             )
 
+        # Guardrail: LLM router sometimes under-classifies doc-based sorular as GENERAL_CHAT.
+        if (
+            intent_response.intent == IntentType.GENERAL_CHAT
+            and _is_explicit_document_query(effective_message)
+        ):
+            print("DEBUG: Promoting GENERAL_CHAT to QUERY_KNOWLEDGE due to explicit document cue.")
+            intent_response.intent = IntentType.QUERY_KNOWLEDGE
+            intent_response.confidence_score = max(intent_response.confidence_score, 0.70)
+
         # Step 2: Route based on intent
         if intent_response.intent == IntentType.LOG_ENTITY:
             # Dual-Track: Run memory extraction in background and return immediately
@@ -1228,7 +1278,8 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
         elif intent_response.intent == IntentType.QUERY_KNOWLEDGE:
             # 1. Semantic Cache Check (Mandatory Read Bypass inside check_cache)
-            cached_response = await check_cache(user_id, effective_message, db_session=db)
+            can_use_cache = not _is_explicit_document_query(effective_message)
+            cached_response = await check_cache(user_id, effective_message, db_session=db) if can_use_cache else None
             if cached_response:
                 # IMPORTANT: Even on cache hit, trigger observation so system learns from context!
                 background_tasks.add_task(background_passive_observation, user_id, effective_message, cached_response, conversation.id)
@@ -1267,9 +1318,10 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
             
-            should_use_knowledge_context = (
-                intent_response.confidence_score >= INTENT_CONFIDENCE_THRESHOLD
-                or _is_explicit_memory_query(effective_message)
+            should_use_knowledge_context = _should_attempt_knowledge_retrieval(
+                effective_message,
+                intent_response.intent,
+                intent_response.confidence_score,
             )
             knowledge_result = {"context": "", "sources": []}
             if should_use_knowledge_context:
@@ -1299,6 +1351,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     confirmation_msg,
                     intent_response.intent.value,
                     "knowledge-confirmation-gate",
+                    knowledge_result.get("sources", []),
                 )
                 return ChatResponse(
                     intent=intent_response.intent.value,
@@ -1332,6 +1385,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 answer,
                 intent_response.intent.value,
                 effective_model,
+                knowledge_result.get("sources", []),
             )
             
             return ChatResponse(
@@ -1371,6 +1425,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 result,
                 intent_response.intent.value,
                 final_model,
+                tool_sources,
             )
             
             # Flush relevant cache because system state changed (Smart clearing)

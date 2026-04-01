@@ -17,6 +17,8 @@ _client: Optional[AsyncOpenAI] = None
 THRESHOLD_IGNORE_MAX = float(os.getenv("KNOWLEDGE_SCORE_IGNORE_MAX", "0.45"))
 THRESHOLD_CONFIRM_MAX = float(os.getenv("KNOWLEDGE_SCORE_CONFIRM_MAX", "0.70"))
 HIGH_CONFIDENCE_TIE_GAP = float(os.getenv("KNOWLEDGE_SCORE_TIE_GAP", "0.08"))
+MIN_SEMANTIC_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_SEMANTIC", "0.58"))
+MIN_LEXICAL_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_LEXICAL", "0.18"))
 
 
 def get_openai_client() -> AsyncOpenAI:
@@ -50,6 +52,23 @@ def _calc_lexical_overlap(query: str, *parts: Optional[str]) -> float:
     if not doc_tokens:
         return 0.0
     return len(query_tokens & doc_tokens) / float(len(query_tokens))
+
+
+def _query_internal_signal(query: str) -> float:
+    text = (query or "").lower()
+    strong_cues = [
+        "doküman", "döküman", "intranet", "wiki", "knowledge", "kb", "policy", "prosedür",
+        "sistemde", "bu belgede", "dokümanda", "kılavuz", "manual", "runbook",
+    ]
+    weak_cues = ["içerik", "tanım", "ne işe yarar", "nasıl çalışır", "versiyon", "madde"]
+    score = 0.0
+    if any(c in text for c in strong_cues):
+        score += 0.7
+    if any(c in text for c in weak_cues):
+        score += 0.2
+    if "?" in text:
+        score += 0.1
+    return min(1.0, score)
 
 
 def split_into_semantic_chunks(content: str, max_chars: int = 1800, overlap_chars: int = 220) -> List[Dict[str, Any]]:
@@ -306,6 +325,7 @@ async def retrieve_knowledge_context(
 
     domain_filter = routing.get("domain") if routing.get("domain") and routing.get("domain") != "general" else None
     product_filter = (routing.get("product") or "").strip() or None
+    internal_signal = _query_internal_signal(query)
 
     distance_expr = KnowledgeChunk.embedding.cosine_distance(query_embedding)
     stmt = (
@@ -313,12 +333,7 @@ async def retrieve_knowledge_context(
         .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
         .where(KnowledgeChunk.user_id == user_id)
     )
-    if domain_filter:
-        stmt = stmt.where(KnowledgeDocument.domain == domain_filter)
-    if product_filter:
-        stmt = stmt.where(KnowledgeDocument.product == product_filter)
-
-    rows = db_session.execute(stmt.order_by("distance").limit(max(top_k * 4, 20))).all()
+    rows = db_session.execute(stmt.order_by("distance").limit(max(top_k * 6, 36))).all()
 
     ranked = []
     now = datetime.utcnow().replace(tzinfo=None)
@@ -337,12 +352,16 @@ async def retrieve_knowledge_context(
         intent_score = min(1.0, metadata_score + (0.2 if section_match > 0 else 0.0))
 
         weighted_score = (
-            0.30 * lexical_overlap
-            + 0.35 * semantic_similarity
+            0.28 * lexical_overlap
+            + 0.42 * semantic_similarity
             + 0.15 * (0.6 * title_match + 0.4 * section_match)
             + 0.15 * intent_score
             + 0.05 * recency_score
         )
+        if domain_filter and doc.domain != domain_filter:
+            weighted_score -= 0.05
+        if product_filter and doc.product and doc.product != product_filter:
+            weighted_score -= 0.05
         ranked.append(
             (
                 weighted_score,
@@ -358,7 +377,16 @@ async def retrieve_knowledge_context(
         )
 
     ranked.sort(key=lambda x: x[0], reverse=True)
-    selected = ranked[:top_k]
+    filtered = [
+        row for row in ranked
+        if (
+            row[3] >= MIN_SEMANTIC_FOR_RELEVANCE
+            or row[4] >= MIN_LEXICAL_FOR_RELEVANCE
+            or row[5] > 0.0
+            or row[6] > 0.0
+        )
+    ]
+    selected = (filtered or ranked)[:top_k]
 
     sources = []
     context_lines = []
@@ -388,7 +416,14 @@ async def retrieve_knowledge_context(
     top_score = float(selected[0][0]) if selected else 0.0
     second_score = float(selected[1][0]) if len(selected) > 1 else 0.0
     decision = "use"
+    top_lexical = float(selected[0][4]) if selected else 0.0
+    top_semantic = float(selected[0][3]) if selected else 0.0
     if top_score < THRESHOLD_IGNORE_MAX:
+        decision = "skip"
+    elif internal_signal < 0.4 and top_score < THRESHOLD_CONFIRM_MAX and top_lexical < 0.24:
+        # General sohbet/dünya bilgisi sorularında alakasız RAG enjeksiyonunu azalt.
+        decision = "skip"
+    elif top_semantic < 0.52 and top_lexical < 0.16:
         decision = "skip"
     elif top_score < THRESHOLD_CONFIRM_MAX:
         decision = "ask_user"
