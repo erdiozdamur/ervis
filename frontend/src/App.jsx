@@ -6,7 +6,6 @@ import {
   BookOpen,
   ChevronDown,
   Command,
-  Database,
   FileText,
   ListChecks,
   Loader2,
@@ -26,8 +25,6 @@ import Register from './components/Register';
 
 const API_URL = '/api/chat';
 const CONVERSATIONS_URL = '/api/chat/conversations';
-const KNOWLEDGE_DOCUMENTS_URL = '/api/knowledge/documents';
-const KNOWLEDGE_DOCUMENT_UPLOAD_URL = '/api/knowledge/documents/upload';
 const CHAT_ATTACHMENT_EXTRACT_URL = '/api/chat/attachments/extract';
 const CONVERSATION_FETCH_LIMIT = 24;
 const HISTORY_FETCH_LIMIT = 40;
@@ -53,7 +50,6 @@ const isDefaultConversationTitle = (title) => {
 };
 
 function ChatInterface() {
-  const [viewMode, setViewMode] = useState('chat');
   const [location, setLocation] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState([]);
@@ -66,23 +62,6 @@ function ChatInterface() {
   const [isDeckOpen, setIsDeckOpen] = useState(false);
   const [isHydratingConversations, setIsHydratingConversations] = useState(true);
   const [isHydratingHistory, setIsHydratingHistory] = useState(true);
-  const [knowledgeDocs, setKnowledgeDocs] = useState([]);
-  const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false);
-  const [isKnowledgeSubmitting, setIsKnowledgeSubmitting] = useState(false);
-  const [isKnowledgeFileReading, setIsKnowledgeFileReading] = useState(false);
-  const [knowledgeError, setKnowledgeError] = useState('');
-  const [knowledgeSuccess, setKnowledgeSuccess] = useState('');
-  const [hasKnowledgeLoadAttempted, setHasKnowledgeLoadAttempted] = useState(false);
-  const [docForm, setDocForm] = useState({
-    title: '',
-    domain: 'product',
-    product: '',
-    version_tag: '',
-    source_type: 'manual',
-    source_ref: '',
-    language: 'tr',
-    content: '',
-  });
   const { user, logout } = useAuth();
   const messagesEndRef = useRef(null);
   const deckRef = useRef(null);
@@ -107,138 +86,6 @@ function ChatInterface() {
     return response.data;
   };
 
-  const loadKnowledgeDocuments = async ({ suppressError = false } = {}) => {
-    setIsKnowledgeLoading(true);
-    if (!suppressError) setKnowledgeError('');
-    try {
-      const response = await axios.get(`${KNOWLEDGE_DOCUMENTS_URL}?limit=100`);
-      setKnowledgeDocs(response.data || []);
-    } catch {
-      if (!suppressError) {
-        setKnowledgeError('Dokümanlar yüklenirken bir sorun oluştu.');
-      }
-    } finally {
-      setHasKnowledgeLoadAttempted(true);
-      setIsKnowledgeLoading(false);
-    }
-  };
-
-  const submitKnowledgeDocument = async (event) => {
-    event.preventDefault();
-    if (!docForm.title.trim()) {
-      setKnowledgeError('Doküman başlığı zorunludur.');
-      return;
-    }
-    if ((docForm.content || '').trim().length < 40) {
-      setKnowledgeError('Doküman içeriği en az 40 karakter olmalı.');
-      return;
-    }
-    setIsKnowledgeSubmitting(true);
-    setKnowledgeError('');
-    setKnowledgeSuccess('');
-    try {
-      const payload = {
-        title: docForm.title.trim(),
-        content: docForm.content.trim(),
-        domain: docForm.domain || null,
-        product: docForm.product.trim() || null,
-        version_tag: docForm.version_tag.trim() || null,
-        source_type: docForm.source_type || 'manual',
-        source_ref: docForm.source_ref.trim() || null,
-        language: docForm.language || 'tr',
-      };
-      const response = await axios.post(KNOWLEDGE_DOCUMENTS_URL, payload);
-      const created = response.data;
-      setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
-      setKnowledgeSuccess(`Doküman işlendi: ${created.chunk_count} parça indekslendi.`);
-      setDocForm((prev) => ({ ...prev, title: '', content: '' }));
-    } catch (error) {
-      const detail = error?.response?.data?.detail;
-      setKnowledgeError(typeof detail === 'string' ? detail : 'Doküman kaydı başarısız oldu.');
-    } finally {
-      setIsKnowledgeSubmitting(false);
-    }
-  };
-
-  const handleKnowledgeFileSelect = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    const maxFileSize = 3 * 1024 * 1024;
-    if (file.size > maxFileSize) {
-      setKnowledgeError('Dosya boyutu en fazla 3MB olabilir.');
-      return;
-    }
-
-    const extension = (file.name.split('.').pop() || '').toLowerCase();
-    const supportedExtensions = ['txt', 'md', 'markdown', 'csv', 'json', 'log', 'pdf'];
-    if (!supportedExtensions.includes(extension)) {
-      setKnowledgeError('Yalnızca txt, md, csv, json, log ve pdf dosyaları destekleniyor.');
-      return;
-    }
-
-    setKnowledgeError('');
-    setKnowledgeSuccess('');
-    setIsKnowledgeFileReading(true);
-    try {
-      if (extension === 'pdf') {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('title', docForm.title.trim() || file.name.replace(/\.[^/.]+$/, ''));
-        formData.append('domain', docForm.domain || 'product');
-        formData.append('product', docForm.product.trim());
-        formData.append('version_tag', docForm.version_tag.trim());
-        formData.append('language', docForm.language || 'tr');
-        formData.append('source_ref', docForm.source_ref.trim());
-
-        const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
-        const created = response.data;
-        setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
-        setKnowledgeSuccess(`PDF işlendi: ${created.chunk_count} parça indekslendi.`);
-        setDocForm((prev) => ({
-          ...prev,
-          title: '',
-          content: '',
-          source_type: 'file',
-          source_ref: file.name,
-        }));
-        return;
-      }
-
-      const text = await file.text();
-      const normalized = (text || '').trim();
-      if (normalized.length < 40) {
-        setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
-        return;
-      }
-      const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
-      setDocForm((prev) => ({
-        ...prev,
-        title: prev.title.trim() ? prev.title : defaultTitle,
-        content: normalized,
-        source_type: 'file',
-        source_ref: file.name,
-      }));
-      setKnowledgeSuccess(`Dosya yüklendi: ${file.name}. İçerik forma aktarıldı.`);
-    } catch {
-      setKnowledgeError('Dosya okunurken bir sorun oluştu.');
-    } finally {
-      setIsKnowledgeFileReading(false);
-    }
-  };
-
-  const removeKnowledgeDocument = async (doc) => {
-    const ok = window.confirm(`"${doc.title}" dokümanını silmek istiyor musun?`);
-    if (!ok) return;
-    try {
-      await axios.delete(`${KNOWLEDGE_DOCUMENTS_URL}/${doc.id}`);
-      setKnowledgeDocs((prev) => prev.filter((x) => x.id !== doc.id));
-      setKnowledgeSuccess('Doküman silindi.');
-    } catch {
-      setKnowledgeError('Doküman silinemedi.');
-    }
-  };
 
   const promoteConversation = (conversationId, fallbackTitle = 'Yeni Oturum') => {
     if (!conversationId) return;
@@ -308,7 +155,6 @@ function ChatInterface() {
           role: item.role,
           content: clampText(item.content),
           model_used: item.model_used || null,
-          knowledge_sources: item.knowledge_sources || [],
           timestamp: item.timestamp || new Date().toISOString(),
         }));
         setMessages(trimMessages(normalized));
@@ -380,7 +226,6 @@ function ChatInterface() {
           role: 'assistant',
           content: clampText(response.data.message),
           model_used: response.data.model_used,
-          knowledge_sources: response.data.knowledge_sources || [],
           timestamp: new Date().toISOString(),
         },
       ]));
@@ -540,15 +385,6 @@ function ChatInterface() {
     };
   }, [isDeckOpen]);
 
-  useEffect(() => {
-    if (viewMode !== 'knowledge') return;
-    if (!hasKnowledgeLoadAttempted) {
-      loadKnowledgeDocuments({ suppressError: true });
-      return;
-    }
-    loadKnowledgeDocuments();
-  }, [viewMode]);
-
   const activeConversation = conversations.find((item) => item.id === activeConversationId) || null;
   const userMessageCount = messages.filter((msg) => msg.role === 'user').length;
   const assistantMessageCount = messages.filter((msg) => msg.role === 'assistant').length;
@@ -657,22 +493,13 @@ function ChatInterface() {
         </div>
 
         <div className="mt-6 flex min-h-0 flex-1 flex-col">
-          <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="mb-3 grid grid-cols-1 gap-2">
             <button
               type="button"
-              onClick={() => setViewMode('chat')}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold ${viewMode === 'chat' ? 'btn-accent' : 'btn-ghost'}`}
+              className="rounded-xl px-3 py-2 text-xs font-semibold btn-accent"
             >
               <BookOpen size={14} className="mr-1 inline" />
               Sohbet
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('knowledge')}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold ${viewMode === 'knowledge' ? 'btn-accent' : 'btn-ghost'}`}
-            >
-              <Database size={14} className="mr-1 inline" />
-              Knowledge
             </button>
           </div>
           <div className="mb-3 flex items-center justify-between">
@@ -888,8 +715,7 @@ function ChatInterface() {
           </button>
         </header>
 
-        {viewMode === 'chat' ? (
-          <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
+        <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
             {isHydratingHistory ? (
             <div className="mx-auto flex h-full w-full max-w-4xl items-center justify-center">
               <div className="surface-card inline-flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-[var(--accent-2)]">
@@ -959,29 +785,6 @@ function ChatInterface() {
                       )}
                       <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
-                    {msg.role === 'assistant' && Array.isArray(msg.knowledge_sources) && msg.knowledge_sources.length > 0 && (
-                      <div className="flex flex-wrap gap-2 text-[11px]">
-                        {Array.from(
-                          new Map(
-                            msg.knowledge_sources.map((source, sourceIdx) => [
-                              source.document_id || source.title || `doc-${sourceIdx}`,
-                              source,
-                            ]),
-                          ).values(),
-                        )
-                          .slice(0, 4)
-                          .map((source, sourceIdx) => (
-                            <span
-                              key={`${source.document_id || source.title || 'doc'}-${sourceIdx}`}
-                              className="rounded-full bg-[rgba(107,212,255,0.16)] px-2 py-1 text-[var(--accent-2)]"
-                              title={`${source.domain || 'n/a'} / ${source.product || 'n/a'}`}
-                            >
-                              <FileText size={10} className="mr-1 inline" />
-                              {source.title || 'Doküman'}
-                            </span>
-                          ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -997,131 +800,9 @@ function ChatInterface() {
               <div ref={messagesEndRef} />
             </div>
           )}
-          </section>
-        ) : (
-          <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-              <div className="surface-card rounded-2xl p-4">
-                <h2 className="text-lg font-bold">Knowledge Studio</h2>
-                <p className="mt-1 text-sm text-[var(--text-muted)]">
-                  Uzun dokümanları ekleyip asistanın ürün bilgisini yönetebilirsin.
-                </p>
-                {knowledgeError && <p className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-200">{knowledgeError}</p>}
-                {knowledgeSuccess && <p className="mt-3 rounded-xl bg-emerald-500/15 px-3 py-2 text-xs text-emerald-200">{knowledgeSuccess}</p>}
-              </div>
+        </section>
 
-              <form onSubmit={submitKnowledgeDocument} className="surface-card rounded-2xl p-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <input
-                    value={docForm.title}
-                    onChange={(e) => setDocForm((prev) => ({ ...prev, title: e.target.value }))}
-                    placeholder="Doküman başlığı"
-                    className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[rgba(126,168,255,0.46)]"
-                  />
-                  <select
-                    value={docForm.domain}
-                    onChange={(e) => setDocForm((prev) => ({ ...prev, domain: e.target.value }))}
-                    className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none"
-                  >
-                    <option value="product">product</option>
-                    <option value="business">business</option>
-                    <option value="tech">tech</option>
-                    <option value="ops">ops</option>
-                    <option value="legal">legal</option>
-                  </select>
-                  <input
-                    value={docForm.product}
-                    onChange={(e) => setDocForm((prev) => ({ ...prev, product: e.target.value }))}
-                    placeholder="Ürün (opsiyonel)"
-                    className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[rgba(126,168,255,0.46)]"
-                  />
-                  <input
-                    value={docForm.version_tag}
-                    onChange={(e) => setDocForm((prev) => ({ ...prev, version_tag: e.target.value }))}
-                    placeholder="Versiyon etiketi (opsiyonel)"
-                    className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[rgba(126,168,255,0.46)]"
-                  />
-                  <input
-                    value={docForm.source_ref}
-                    onChange={(e) => setDocForm((prev) => ({ ...prev, source_ref: e.target.value }))}
-                    placeholder="Kaynak link/id (opsiyonel)"
-                    className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[rgba(126,168,255,0.46)] sm:col-span-2"
-                  />
-                </div>
-                <textarea
-                  value={docForm.content}
-                  onChange={(e) => setDocForm((prev) => ({ ...prev, content: e.target.value }))}
-                  placeholder="Doküman içeriğini yapıştır (min 40 karakter)..."
-                  rows={10}
-                  className="mt-3 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-3 text-sm outline-none focus:border-[rgba(126,168,255,0.46)]"
-                />
-                <div className="mt-3 flex items-center justify-between">
-                  <p className="text-xs text-[var(--text-muted)]">
-                    İçerik uzunluğu: {docForm.content.trim().length} karakter
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <label className="btn-ghost cursor-pointer rounded-xl px-3 py-2 text-xs">
-                      {isKnowledgeFileReading ? 'Dosya okunuyor...' : 'Dosya Yükle'}
-                      <input
-                        type="file"
-                        accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,text/plain,text/markdown,text/csv,application/json,application/pdf"
-                        className="hidden"
-                        onChange={handleKnowledgeFileSelect}
-                        disabled={isKnowledgeFileReading || isKnowledgeSubmitting}
-                      />
-                    </label>
-                    <button type="submit" disabled={isKnowledgeSubmitting || isKnowledgeFileReading} className="btn-accent rounded-xl px-4 py-2 text-sm disabled:opacity-45">
-                    {isKnowledgeSubmitting ? 'İşleniyor...' : 'Dokümanı İndeksle'}
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              <div className="surface-card rounded-2xl p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Dokümanlar</h3>
-                  <button type="button" onClick={loadKnowledgeDocuments} className="btn-ghost rounded-xl px-3 py-2 text-xs">
-                    Yenile
-                  </button>
-                </div>
-                {isKnowledgeLoading ? (
-                  <div className="inline-flex items-center gap-2 text-sm text-[var(--accent-2)]">
-                    <Loader2 size={14} className="animate-spin" />
-                    Dokümanlar yükleniyor...
-                  </div>
-                ) : knowledgeDocs.length === 0 ? (
-                  <p className="text-sm text-[var(--text-muted)]">Henüz doküman yok. Üstten ilk dokümanı ekleyebilirsin.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {knowledgeDocs.map((doc) => (
-                      <div key={doc.id} className="rounded-xl border border-[rgba(122,146,182,0.24)] bg-[rgba(12,20,34,0.65)] p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{doc.title}</p>
-                            <p className="mt-1 text-xs text-[var(--text-muted)]">
-                              domain: {doc.domain || 'n/a'} · product: {doc.product || 'n/a'} · chunk: {doc.chunk_count}
-                            </p>
-                            {doc.summary && <p className="mt-2 line-clamp-3 text-xs text-[var(--text-muted)]">{doc.summary}</p>}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeKnowledgeDocument(doc)}
-                            className="btn-ghost rounded-xl p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {viewMode === 'chat' && (
-          <footer className="px-3 pb-3 sm:px-4 lg:px-6 lg:pb-5">
+        <footer className="px-3 pb-3 sm:px-4 lg:px-6 lg:pb-5">
             <form onSubmit={handleSend} className="mx-auto w-full max-w-4xl">
               <div className="surface-panel rounded-2xl p-2 sm:p-3">
                 {chatAttachments.length > 0 && (
@@ -1178,7 +859,6 @@ function ChatInterface() {
               </div>
             </form>
           </footer>
-        )}
       </main>
     </div>
   );

@@ -9,8 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Task
-from services.knowledge_service import retrieve_knowledge_context
-
 # load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
 
@@ -168,11 +166,6 @@ def _format_recent_messages_for_prompt(recent_messages: Optional[list[dict[str, 
     return "\n\n[SON KONUŞMA BAĞLAMI]:\n" + "\n".join(lines)
 
 
-def _should_pull_knowledge_context(_user_input: str) -> bool:
-    # Always attempt retrieval; similarity gating happens in knowledge_service.
-    return True
-
-
 # 3. CONVERSATIONAL REFINER
 async def generate_natural_response(user_input: str, tool_name: str, tool_result: str) -> str:
     """
@@ -208,30 +201,9 @@ KURALLAR:
         return tool_result
 
 
-def _format_knowledge_context_for_prompt(knowledge_result: dict[str, Any]) -> str:
-    sources = knowledge_result.get("sources", []) or []
-    context = (knowledge_result.get("context") or "").strip()
-    if not sources or not context:
-        return ""
-
-    top_sources = []
-    for source in sources[:3]:
-        title = source.get("title") or "Bilinmeyen Kaynak"
-        domain = source.get("domain") or "n/a"
-        product = source.get("product") or "n/a"
-        top_sources.append(f"- {title} (domain={domain}, product={product})")
-
-    return (
-        "\n\n[HIZLI BAĞLAM KONTROLÜ - KULLAN]:\n"
-        + "\n".join(top_sources)
-        + f"\n\n[BAĞLAM METNİ]:\n{context[:2200]}"
-    )
-
-
 async def generate_direct_content(
     user_input: str,
     requires_unavailable_integration: bool,
-    knowledge_result: Optional[dict[str, Any]] = None,
     recent_messages: Optional[list[dict[str, str]]] = None,
 ) -> str:
     """
@@ -245,7 +217,6 @@ ve gerçek entegrasyon yoksa ilk satırda kısa bir şeffaflık notu ver:
 "Bunu ilgili sisteme otomatik işleyemiyorum; ama aşağıda doğrudan kullanabileceğin içeriği hazırladım."
 """ if requires_unavailable_integration else ""
 
-    knowledge_context = _format_knowledge_context_for_prompt(knowledge_result or {})
     recent_context = _format_recent_messages_for_prompt(recent_messages)
 
     system_prompt = f"""Sen Ervis'sin.
@@ -256,22 +227,20 @@ Kurallar:
 2. Asla yapılmayan bir işlemi yapılmış gibi anlatma ("oluşturdum", "gönderdim", "açtım" deme).
 3. Kısa bir girişten sonra esas çıktıyı ver; gereksiz açıklama yapma.
 4. Sadece Türkçe cevap ver.
-5. [HIZLI BAĞLAM KONTROLÜ - KULLAN] verilmişse çıktı içeriğini bu bağlama dayandır. Bağlam dışı iddia üretme.
-6. Kullanıcı önceki içeriğe bir şey "ekle/güncelle/dahil et" dediğinde varsayılan modun "tam sürümü yeniden üretme" olsun.
+5. Kullanıcı önceki içeriğe bir şey "ekle/güncelle/dahil et" dediğinde varsayılan modun "tam sürümü yeniden üretme" olsun.
    - Sadece kullanıcı açıkça "yalnızca şu satırı değiştir", "sadece delta ver" derse kısmi güncelleme yap.
    - Aksi durumda eski + yeni bilgiyi tek parça, baştan yazılmış final çıktı olarak ver.
-7. Her çıktıyı "tek başına kullanılabilir" kalite barından geçir:
+6. Her çıktıyı "tek başına kullanılabilir" kalite barından geçir:
    - Zorunlu bölümler eksikse tamamla.
    - Yeni istek doğru bölüme entegre değilse düzelt.
    - Kullanıcıyı manuel birleştirmeye zorlayan cümle kurma ("bunu ekleyin", "şuraya yazın" vb.).
-8. Üretim tipi Jira/mail/PR/plan/duyuru/doküman gibi operasyonel metinse:
+7. Üretim tipi Jira/mail/PR/plan/duyuru/doküman gibi operasyonel metinse:
    - Önce kısa başlık satırı ver (gerekliyse),
    - Sonra doğrudan kopyalanabilir tek blok final içerik ver.
    - İkinci bir "ek bilgi" bloğu sadece kullanıcı isterse ekle.
-9. [SON KONUŞMA BAĞLAMI] varsa ve kullanıcı referanslı bir güncelleme isterse
+8. [SON KONUŞMA BAĞLAMI] varsa ve kullanıcı referanslı bir güncelleme isterse
    (örn: "buna şunu ekle", "öncekine göre güncelle"), en son asistan çıktısını temel alıp revize et.
 {transparency_note}
-{knowledge_context}
 {recent_context}
 """
 
@@ -301,28 +270,12 @@ async def execute_tool_for_user(
     print(f"DEBUG: Tool handling decision={decision.mode}, unavailable_integration={decision.requires_unavailable_integration}")
 
     if decision.mode != "EXECUTE_AVAILABLE_TOOL":
-        knowledge_result: dict[str, Any] = {"context": "", "sources": []}
-        if _should_pull_knowledge_context(user_input):
-            knowledge_result = await retrieve_knowledge_context(
-                db_session=db_session,
-                user_id=user_id,
-                query=user_input,
-                metadata=metadata or {},
-                top_k=3,
-            )
-        if knowledge_result.get("needs_user_confirmation"):
-            return (
-                knowledge_result.get("confirmation_prompt") or "Bağlam seçimi için onayına ihtiyacım var.",
-                "knowledge-confirmation-gate",
-                knowledge_result.get("sources", []),
-            )
         direct_response = await generate_direct_content(
             user_input=user_input,
             requires_unavailable_integration=decision.requires_unavailable_integration,
-            knowledge_result=knowledge_result,
             recent_messages=recent_messages,
         )
-        return direct_response, "gpt-4o-mini", knowledge_result.get("sources", [])
+        return direct_response, "gpt-4o-mini", []
 
     system_prompt = """Sen Ervis'in araç kullanım katmanısın. Kullanıcının isteğine göre uygun aracı seç ve çalıştır.
 HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim", "listele", "göster", "neler var?", "var mı?" gibi ifadeler kullanırsa mutlaka 'show_tasks' aracını çağır.
