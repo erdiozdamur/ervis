@@ -524,23 +524,28 @@ def _compose_message_with_attachments(base_message: str, attachments: Optional[L
     return f"{safe_message}\n\n[EKLER]\n" + "\n\n".join(blocks)
 
 
-def _is_memory_lookup_query(message: str) -> bool:
+INTENT_CONFIDENCE_THRESHOLD = 0.62
+HIGH_RISK_INTENTS = {IntentType.QUERY_KNOWLEDGE, IntentType.EXECUTE_TOOL}
+
+
+def _is_explicit_memory_query(message: str) -> bool:
     text = (message or "").lower()
     memory_cues = [
         "hatırl",
-        "hafız",
+        "hafıza",
         "notlarım",
         "daha önce",
         "geçen",
-        "benim",
-        "oturum",
         "konuşmamız",
         "söylemiştim",
         "kaydetti",
+        "profilimde",
     ]
     return any(cue in text for cue in memory_cues)
 
 
+def _should_gate_for_clarification(intent: IntentType, confidence_score: float) -> bool:
+    return intent in HIGH_RISK_INTENTS and confidence_score < INTENT_CONFIDENCE_THRESHOLD
 
 
 async def _extract_text_from_image_with_vision(payload: bytes, mime_type: str) -> str:
@@ -1161,10 +1166,35 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
 
         # Step 1: Analyze intent
         intent_response, router_model = await analyze_user_input(effective_message)
-        print(f"DEBUG: Intent detected: {intent_response.intent} with reasoning: {intent_response.reasoning}")
+        print(
+            "DEBUG: Intent detected=%s confidence=%.2f reasoning=%s"
+            % (intent_response.intent, intent_response.confidence_score, intent_response.reasoning)
+        )
         
         # Default model used is the router model unless overridden by agent
         final_model = router_model
+
+        # Step 1.5: Confidence guardrail for high-risk intents
+        if _should_gate_for_clarification(intent_response.intent, intent_response.confidence_score):
+            clarification_msg = (
+                "Mesajını iki şekilde yorumlayabilirim. "
+                "Bunu geçmiş not/hafıza sorgusu ya da bir komut olarak mı ele almamı istersin?"
+            )
+            _store_chat_history_now(
+                db,
+                user_id,
+                conversation.id,
+                effective_message,
+                clarification_msg,
+                IntentType.GENERAL_CHAT.value,
+                "intent-clarification-gate",
+            )
+            return ChatResponse(
+                intent=IntentType.GENERAL_CHAT.value,
+                message=clarification_msg,
+                model_used="intent-clarification-gate",
+                conversation_id=conversation.id,
+            )
 
         # Step 2: Route based on intent
         if intent_response.intent == IntentType.LOG_ENTITY:
@@ -1237,8 +1267,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
             
+            should_use_knowledge_context = (
+                intent_response.confidence_score >= INTENT_CONFIDENCE_THRESHOLD
+                or _is_explicit_memory_query(effective_message)
+            )
             knowledge_result = {"context": "", "sources": []}
-            if _is_memory_lookup_query(effective_message):
+            if should_use_knowledge_context:
                 knowledge_result = await retrieve_knowledge_context(
                     db_session=db,
                     user_id=user_id,
@@ -1246,28 +1280,33 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     metadata=request.metadata or {},
                     top_k=8,
                 )
-                source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
-                if source_titles:
-                    unique_titles = list(dict.fromkeys(source_titles))[:5]
-                    meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
-                if knowledge_result.get("needs_user_confirmation"):
-                    confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
-                    _store_chat_history_now(
-                        db,
-                        user_id,
-                        conversation.id,
-                        effective_message,
-                        confirmation_msg,
-                        intent_response.intent.value,
-                        "knowledge-confirmation-gate",
-                    )
-                    return ChatResponse(
-                        intent=intent_response.intent.value,
-                        message=confirmation_msg,
-                        model_used="knowledge-confirmation-gate",
-                        knowledge_sources=knowledge_result.get("sources", []),
-                        conversation_id=conversation.id,
-                    )
+            else:
+                print(
+                    "DEBUG: Skipping knowledge retrieval due to low-confidence QUERY_KNOWLEDGE "
+                    f"(confidence={intent_response.confidence_score:.2f})"
+                )
+            source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
+            if source_titles:
+                unique_titles = list(dict.fromkeys(source_titles))[:5]
+                meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
+            if knowledge_result.get("needs_user_confirmation"):
+                confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
+                _store_chat_history_now(
+                    db,
+                    user_id,
+                    conversation.id,
+                    effective_message,
+                    confirmation_msg,
+                    intent_response.intent.value,
+                    "knowledge-confirmation-gate",
+                )
+                return ChatResponse(
+                    intent=intent_response.intent.value,
+                    message=confirmation_msg,
+                    model_used="knowledge-confirmation-gate",
+                    knowledge_sources=knowledge_result.get("sources", []),
+                    conversation_id=conversation.id,
+                )
 
             answer, final_model = await answer_query(
                 user_id,
