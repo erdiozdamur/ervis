@@ -399,6 +399,10 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="The user's raw text input.")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Optional situational metadata (e.g., location, time).")
     conversation_id: Optional[uuid.UUID] = Field(None, description="Optional active conversation identifier.")
+    attachments: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description="Optional chat attachments as extracted text blocks.",
+    )
 
 class ChatResponse(BaseModel):
     intent: str
@@ -407,6 +411,13 @@ class ChatResponse(BaseModel):
     extracted_data: Optional[Dict[str, Any]] = None
     knowledge_sources: Optional[List[Dict[str, Any]]] = None
     conversation_id: Optional[uuid.UUID] = None
+
+
+class ChatAttachmentExtractResponse(BaseModel):
+    filename: str
+    mime_type: str
+    content: str
+    char_count: int
 
 
 class ConversationCreateRequest(BaseModel):
@@ -488,6 +499,28 @@ def _extract_text_from_uploaded_file(file_name: str, payload: bytes) -> str:
         return payload.decode("utf-8", errors="ignore").strip()
     except Exception:
         return ""
+
+
+def _compose_message_with_attachments(base_message: str, attachments: Optional[List[Dict[str, str]]]) -> str:
+    safe_message = (base_message or "").strip()
+    if not attachments:
+        return safe_message
+
+    blocks: list[str] = []
+    for item in attachments:
+        if not isinstance(item, dict):
+            continue
+        content = (item.get("content") or "").strip()
+        if not content:
+            continue
+        filename = (item.get("filename") or "ek-dosya").strip()[:120]
+        mime_type = (item.get("mime_type") or "application/octet-stream").strip()[:120]
+        blocks.append(f"[EK DOSYA]\nDosya: {filename}\nTür: {mime_type}\nİçerik:\n{content[:12000]}")
+
+    if not blocks:
+        return safe_message
+
+    return f"{safe_message}\n\n[EKLER]\n" + "\n\n".join(blocks)
 
 def _store_chat_history_now(
     db: Session,
@@ -997,6 +1030,37 @@ async def remove_knowledge_document(
         raise HTTPException(status_code=404, detail="Document not found")
     return {"message": "Knowledge document deleted"}
 
+
+@app.post("/api/chat/attachments/extract", response_model=ChatAttachmentExtractResponse)
+async def extract_chat_attachment(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    max_bytes = 5 * 1024 * 1024
+    payload = await file.read()
+    if len(payload) > max_bytes:
+        raise HTTPException(status_code=400, detail="Dosya boyutu en fazla 5MB olabilir.")
+
+    ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "").lower()
+    supported_extensions = {
+        "txt", "md", "markdown", "csv", "json", "log", "pdf", "html", "xml",
+        "yaml", "yml", "ini", "cfg", "sql", "py", "js", "ts", "tsx", "jsx",
+        "java", "go", "rs", "rb", "php", "c", "h", "cpp", "hpp", "sh",
+    }
+    if ext and ext not in supported_extensions:
+        raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya türü: .{ext}")
+
+    extracted = _extract_text_from_uploaded_file(file.filename or "attachment", payload)
+    if len(extracted) < 5:
+        raise HTTPException(status_code=400, detail="Dosyadan anlamlı metin çıkarılamadı.")
+
+    return ChatAttachmentExtractResponse(
+        filename=file.filename or "attachment",
+        mime_type=file.content_type or "application/octet-stream",
+        content=extracted[:12000],
+        char_count=len(extracted[:12000]),
+    )
+
 @app.post("/api/auth/register")
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if user exists
@@ -1032,13 +1096,14 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
     try:
         # Override request.user_id with authenticated user's ID for security
         user_id = current_user.id
+        effective_message = _compose_message_with_attachments(request.message, request.attachments)
         conversation = _resolve_conversation(db, user_id, request.conversation_id, request.message)
         
         # Step 0: Cleanup stale cache in background
         background_tasks.add_task(delete_stale_cache, db)
 
         # Step 1: Analyze intent
-        intent_response, router_model = await analyze_user_input(request.message)
+        intent_response, router_model = await analyze_user_input(effective_message)
         print(f"DEBUG: Intent detected: {intent_response.intent} with reasoning: {intent_response.reasoning}")
         
         # Default model used is the router model unless overridden by agent
@@ -1047,21 +1112,21 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
         # Step 2: Route based on intent
         if intent_response.intent == IntentType.LOG_ENTITY:
             # Dual-Track: Run memory extraction in background and return immediately
-            background_tasks.add_task(background_memory_extraction, user_id, request.message, conversation.id)
+            background_tasks.add_task(background_memory_extraction, user_id, effective_message, conversation.id)
             
             # Flush relevant cache because system knowledge changed (Smart clearing)
-            await clear_user_cache(user_id, db_session=db, hint=request.message)
+            await clear_user_cache(user_id, db_session=db, hint=effective_message)
             
             # Default acknowledgment if LLM fails to provide one
             ack = intent_response.suggested_acknowledgment or "Anladım, bu bilgiyi hafızama not ediyorum."
             
             # Passive observation in parallel to extraction
-            background_tasks.add_task(background_passive_observation, user_id, request.message, ack, conversation.id)
+            background_tasks.add_task(background_passive_observation, user_id, effective_message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
                 conversation.id,
-                request.message,
+                effective_message,
                 ack,
                 intent_response.intent.value,
                 final_model,
@@ -1076,15 +1141,15 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
         elif intent_response.intent == IntentType.QUERY_KNOWLEDGE:
             # 1. Semantic Cache Check (Mandatory Read Bypass inside check_cache)
-            cached_response = await check_cache(user_id, request.message, db_session=db)
+            cached_response = await check_cache(user_id, effective_message, db_session=db)
             if cached_response:
                 # IMPORTANT: Even on cache hit, trigger observation so system learns from context!
-                background_tasks.add_task(background_passive_observation, user_id, request.message, cached_response, conversation.id)
+                background_tasks.add_task(background_passive_observation, user_id, effective_message, cached_response, conversation.id)
                 _store_chat_history_now(
                     db,
                     user_id,
                     conversation.id,
-                    request.message,
+                    effective_message,
                     cached_response,
                     intent_response.intent.value,
                     "pgvector-cache",
@@ -1100,10 +1165,10 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
             # 2. Dynamic Check for Web Search
             web_context = None
-            status = await check_dynamic_status(request.message)
+            status = await check_dynamic_status(effective_message)
             if status == "dinamik":
                 print(f"🌐 [API] Dynamic query detected, initiating web search...")
-                web_context = await search_the_web(request.message, metadata=request.metadata)
+                web_context = await search_the_web(effective_message, metadata=request.metadata)
  
             # 3. RAG flow if no cache
             print(f"DEBUG: Entering RAG flow for query knowledge")
@@ -1118,7 +1183,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             knowledge_result = await retrieve_knowledge_context(
                 db_session=db,
                 user_id=user_id,
-                query=request.message,
+                query=effective_message,
                 metadata=request.metadata or {},
                 top_k=8,
             )
@@ -1133,7 +1198,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     db,
                     user_id,
                     conversation.id,
-                    request.message,
+                    effective_message,
                     confirmation_msg,
                     intent_response.intent.value,
                     "knowledge-confirmation-gate",
@@ -1148,7 +1213,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
 
             answer, final_model = await answer_query(
                 user_id,
-                request.message,
+                effective_message,
                 db_session=db,
                 web_context=web_context,
                 metadata_context=meta_str,
@@ -1157,16 +1222,16 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             )
             
             # 4. Save to cache (Mandatory Write Bypass inside save_to_cache)
-            await save_to_cache(user_id, request.message, answer, db_session=db)
+            await save_to_cache(user_id, effective_message, answer, db_session=db)
             
             # 5. Passive Observation
-            background_tasks.add_task(background_passive_observation, user_id, request.message, answer, conversation.id)
+            background_tasks.add_task(background_passive_observation, user_id, effective_message, answer, conversation.id)
             effective_model = f"{final_model} + web-search" if web_context else final_model
             _store_chat_history_now(
                 db,
                 user_id,
                 conversation.id,
-                request.message,
+                effective_message,
                 answer,
                 intent_response.intent.value,
                 effective_model,
@@ -1191,7 +1256,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             )
             result, final_model, tool_sources = await execute_tool_for_user(
                 user_id,
-                request.message,
+                effective_message,
                 db_session=db,
                 metadata=request.metadata or {},
                 recent_messages=recent_messages,
@@ -1199,20 +1264,20 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             print(f"DEBUG: Tool execution result: {result}")
             
             # Dual-Track: Even after tool execution, extract memory in background
-            background_tasks.add_task(background_memory_extraction, user_id, request.message, conversation.id)
-            background_tasks.add_task(background_passive_observation, user_id, request.message, result, conversation.id)
+            background_tasks.add_task(background_memory_extraction, user_id, effective_message, conversation.id)
+            background_tasks.add_task(background_passive_observation, user_id, effective_message, result, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
                 conversation.id,
-                request.message,
+                effective_message,
                 result,
                 intent_response.intent.value,
                 final_model,
             )
             
             # Flush relevant cache because system state changed (Smart clearing)
-            await clear_user_cache(user_id, db_session=db, hint=request.message)
+            await clear_user_cache(user_id, db_session=db, hint=effective_message)
             
             return ChatResponse(
                 intent=intent_response.intent.value,
@@ -1224,12 +1289,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
         else: # GENERAL_CHAT
             ack = intent_response.suggested_acknowledgment or "Merhaba! Size nasıl yardımcı olabilirim?"
-            background_tasks.add_task(background_passive_observation, user_id, request.message, ack, conversation.id)
+            background_tasks.add_task(background_passive_observation, user_id, effective_message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
                 conversation.id,
-                request.message,
+                effective_message,
                 ack,
                 intent_response.intent.value,
                 final_model,
