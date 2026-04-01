@@ -20,6 +20,7 @@ from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text, select, delete, func
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from openai import AuthenticationError as OpenAIAuthenticationError
@@ -43,10 +44,33 @@ from services.knowledge_service import (
 )
 
 # Database Setup
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is required.")
-engine = create_engine(DATABASE_URL)
+def _build_database_url() -> str | URL:
+    raw_database_url = os.getenv("DATABASE_URL")
+    if raw_database_url:
+        return raw_database_url
+
+    pg_user = os.getenv("POSTGRES_USER")
+    pg_password = os.getenv("POSTGRES_PASSWORD")
+    pg_db = os.getenv("POSTGRES_DB")
+    pg_host = os.getenv("POSTGRES_HOST", "db")
+    pg_port = int(os.getenv("POSTGRES_PORT", "5432"))
+
+    if not pg_user or not pg_password or not pg_db:
+        raise RuntimeError(
+            "DATABASE_URL is required, or set POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
+        )
+
+    return URL.create(
+        drivername="postgresql+psycopg2",
+        username=pg_user,
+        password=pg_password,
+        host=pg_host,
+        port=pg_port,
+        database=pg_db,
+    )
+
+
+engine = create_engine(_build_database_url())
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Auto-create tables on startup (safe for production - only creates if not exists)
@@ -571,12 +595,32 @@ def _backfill_legacy_conversations():
         db.close()
 
 
-_init_database()
+_startup_init_error: Optional[str] = None
+
+
+@app.on_event("startup")
+def startup_initialize_database():
+    global _startup_init_error
+    try:
+        _init_database()
+        _startup_init_error = None
+    except Exception as exc:
+        _startup_init_error = str(exc)
+        print(f"❌ Startup database initialization failed: {_startup_init_error}")
 
 @app.get("/healthz")
-def healthz(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
+def healthz():
+    """Lightweight liveness probe that does not require external dependencies."""
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz(db: Session = Depends(get_db)):
+    """Readiness probe that verifies database connectivity."""
+    if _startup_init_error:
+        raise HTTPException(status_code=503, detail=f"startup init failed: {_startup_init_error}")
+    db.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
 
 @app.post("/api/chat/conversations", response_model=ConversationItem)
