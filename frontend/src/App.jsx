@@ -3,7 +3,6 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import {
   Bot,
-  BookOpen,
   ChevronDown,
   Command,
   FileText,
@@ -654,16 +653,6 @@ function ChatInterface() {
         </div>
 
         <div className="mt-6 flex min-h-0 flex-1 flex-col">
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setViewMode('chat')}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold ${viewMode === 'chat' ? 'btn-accent' : 'btn-ghost'}`}
-            >
-              <BookOpen size={14} className="mr-1 inline" />
-              Sohbet
-            </button>
-          </div>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Akış</p>
             <span className="rounded-full bg-[rgba(107,212,255,0.16)] px-2 py-1 text-[10px] text-[var(--accent-2)]">
