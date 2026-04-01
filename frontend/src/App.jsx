@@ -5,13 +5,13 @@ import {
   Bot,
   BookOpen,
   ChevronDown,
-  Command,
   Database,
   FileText,
   ListChecks,
   Loader2,
   LogOut,
   Menu,
+  Paperclip,
   Pencil,
   Plus,
   Send,
@@ -27,11 +27,13 @@ const API_URL = '/api/chat';
 const CONVERSATIONS_URL = '/api/chat/conversations';
 const KNOWLEDGE_DOCUMENTS_URL = '/api/knowledge/documents';
 const KNOWLEDGE_DOCUMENT_UPLOAD_URL = '/api/knowledge/documents/upload';
+const CHAT_ATTACHMENT_EXTRACT_URL = '/api/chat/attachments/extract';
 const CONVERSATION_FETCH_LIMIT = 24;
 const HISTORY_FETCH_LIMIT = 40;
 const UI_MESSAGE_LIMIT = 60;
 const INPUT_MAX_CHARS = 2000;
 const MESSAGE_RENDER_CHAR_LIMIT = 4000;
+const CHAT_ATTACHMENT_MAX_COUNT = 6;
 
 const trimMessages = (items, limit = UI_MESSAGE_LIMIT) => {
   if (items.length <= limit) return items;
@@ -58,6 +60,8 @@ function ChatInterface() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [chatAttachments, setChatAttachments] = useState([]);
+  const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [isDeckOpen, setIsDeckOpen] = useState(false);
   const [isHydratingConversations, setIsHydratingConversations] = useState(true);
   const [isHydratingHistory, setIsHydratingHistory] = useState(true);
@@ -82,6 +86,7 @@ function ChatInterface() {
   const messagesEndRef = useRef(null);
   const deckRef = useRef(null);
   const inputRef = useRef(null);
+  const attachmentInputRef = useRef(null);
 
   useEffect(() => {
     fetch('https://ipapi.co/json/')
@@ -331,10 +336,11 @@ function ChatInterface() {
 
   const sendMessage = async (rawContent) => {
     const content = clampText(rawContent, INPUT_MAX_CHARS);
-    if (!content || isLoading || !activeConversationId) return;
+    if ((!content && chatAttachments.length === 0) || isLoading || !activeConversationId) return;
+    const visibleUserContent = content || `Ek dosya gönderildi (${chatAttachments.length})`;
     const userMessage = {
       role: 'user',
-      content,
+      content: visibleUserContent,
       timestamp: new Date().toISOString(),
     };
 
@@ -356,6 +362,11 @@ function ChatInterface() {
         message: userMessage.content,
         metadata,
         conversation_id: activeConversationId,
+        attachments: chatAttachments.map((item) => ({
+          filename: item.filename,
+          mime_type: item.mime_type,
+          content: item.content,
+        })),
       });
 
       const resolvedConversationId = response.data.conversation_id || activeConversationId;
@@ -372,6 +383,7 @@ function ChatInterface() {
           timestamp: new Date().toISOString(),
         },
       ]));
+      setChatAttachments([]);
     } catch (error) {
       if (error?.response?.status === 401) {
         logout();
@@ -401,15 +413,59 @@ function ChatInterface() {
 
   const handleSend = async (event) => {
     event.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() && chatAttachments.length === 0) return;
     await sendMessage(input);
   };
 
   const handleInputKeyDown = async (event) => {
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && chatAttachments.length === 0) || isLoading) return;
     await sendMessage(input);
+  };
+
+  const removeChatAttachment = (id) => {
+    setChatAttachments((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleChatAttachmentSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    const remainingSlots = CHAT_ATTACHMENT_MAX_COUNT - chatAttachments.length;
+    const targetFiles = files.slice(0, Math.max(0, remainingSlots));
+    if (targetFiles.length === 0) return;
+
+    setIsAttachmentUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of targetFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await axios.post(CHAT_ATTACHMENT_EXTRACT_URL, formData);
+        uploaded.push({
+          id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          filename: response.data.filename,
+          mime_type: response.data.mime_type,
+          content: response.data.content,
+          char_count: response.data.char_count,
+        });
+      }
+      setChatAttachments((prev) => [...prev, ...uploaded].slice(0, CHAT_ATTACHMENT_MAX_COUNT));
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      setMessages((prev) => trimMessages([
+        ...prev,
+        {
+          role: 'assistant',
+          content: typeof detail === 'string' ? `Dosya eklenemedi: ${detail}` : 'Dosya eklenirken bir hata oluştu.',
+          timestamp: new Date().toISOString(),
+        },
+      ]));
+    } finally {
+      setIsAttachmentUploading(false);
+    }
   };
 
   const clearChat = async () => {
@@ -1058,10 +1114,38 @@ function ChatInterface() {
           <footer className="px-3 pb-3 sm:px-4 lg:px-6 lg:pb-5">
             <form onSubmit={handleSend} className="mx-auto w-full max-w-4xl">
               <div className="surface-panel rounded-2xl p-2 sm:p-3">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="hidden rounded-xl bg-[rgba(107,212,255,0.14)] p-2 text-[var(--accent-2)] sm:block">
-                    <Command size={18} />
+                {chatAttachments.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2 px-1">
+                    {chatAttachments.map((file) => (
+                      <span key={file.id} className="inline-flex items-center gap-2 rounded-full bg-[rgba(107,212,255,0.16)] px-3 py-1 text-xs text-[var(--accent-2)]">
+                        <FileText size={12} />
+                        <span className="max-w-[200px] truncate">{file.filename}</span>
+                        <span className="text-[10px] opacity-80">{file.char_count} karakter</span>
+                        <button type="button" onClick={() => removeChatAttachment(file.id)} className="rounded-full p-0.5 hover:bg-[rgba(255,255,255,0.14)]">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
                   </div>
+                )}
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    disabled={isLoading || isAttachmentUploading || chatAttachments.length >= CHAT_ATTACHMENT_MAX_COUNT}
+                    className="btn-ghost h-11 w-11 rounded-xl disabled:cursor-not-allowed disabled:opacity-45 sm:h-12 sm:w-12"
+                    title="Dosya ekle"
+                  >
+                    {isAttachmentUploading ? <Loader2 size={16} className="mx-auto animate-spin" /> : <Paperclip size={16} className="mx-auto" />}
+                  </button>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleChatAttachmentSelect}
+                    accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,.html,.xml,.yaml,.yml,.ini,.cfg,.sql,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.rb,.php,.c,.h,.cpp,.hpp,.sh,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff,text/plain,text/markdown,text/csv,application/json,application/pdf,text/html,application/xml,text/xml,image/png,image/jpeg,image/webp,image/gif,image/bmp,image/tiff"
+                  />
                   <textarea
                     ref={inputRef}
                     value={input}
@@ -1075,7 +1159,7 @@ function ChatInterface() {
                   />
                   <button
                     type="submit"
-                    disabled={!input.trim() || isLoading}
+                    disabled={(!input.trim() && chatAttachments.length === 0) || isLoading || isAttachmentUploading}
                     className="btn-accent h-11 w-11 rounded-xl disabled:cursor-not-allowed disabled:opacity-45 sm:h-12 sm:w-12"
                   >
                     <Send size={17} className="mx-auto" />
