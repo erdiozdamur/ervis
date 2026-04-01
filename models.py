@@ -160,6 +160,7 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(String, nullable=False)
     model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     intent: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    knowledge_sources: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
