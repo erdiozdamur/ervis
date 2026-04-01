@@ -303,6 +303,12 @@ async def execute_tool_for_user(
             metadata=metadata or {},
             top_k=3,
         )
+        if knowledge_result.get("needs_user_confirmation"):
+            return (
+                knowledge_result.get("confirmation_prompt") or "Bağlam seçimi için onayına ihtiyacım var.",
+                "knowledge-confirmation-gate",
+                knowledge_result.get("sources", []),
+            )
         direct_response = await generate_direct_content(
             user_input=user_input,
             requires_unavailable_integration=decision.requires_unavailable_integration,
