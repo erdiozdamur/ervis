@@ -572,13 +572,16 @@ def _is_explicit_document_query(message: str) -> bool:
 
 
 def _should_attempt_knowledge_retrieval(
-    message: str,
-    intent: IntentType,
-    confidence_score: float,
+    _message: str,
+    _intent: IntentType,
+    _confidence_score: float,
 ) -> bool:
-    if intent == IntentType.QUERY_KNOWLEDGE:
-        return confidence_score >= 0.45 or _is_explicit_memory_query(message) or _is_explicit_document_query(message)
-    return _is_explicit_memory_query(message) or _is_explicit_document_query(message)
+    """
+    Knowledge retrieval attempt policy:
+    - Always attempt retrieval for user prompts.
+    - Retrieval service itself decides whether to use/skip context based on similarity.
+    """
+    return True
 
 
 def _should_gate_for_clarification(intent: IntentType, confidence_score: float) -> bool:
