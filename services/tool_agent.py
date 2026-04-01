@@ -168,9 +168,25 @@ def _format_recent_messages_for_prompt(recent_messages: Optional[list[dict[str, 
     return "\n\n[SON KONUŞMA BAĞLAMI]:\n" + "\n".join(lines)
 
 
-def _should_pull_knowledge_context(_user_input: str) -> bool:
-    # Always attempt retrieval; similarity gating happens in knowledge_service.
-    return True
+def _should_pull_knowledge_context(user_input: str) -> bool:
+    text = (user_input or "").lower()
+    explicit_doc_cues = [
+        "doküman",
+        "döküman",
+        "intranet",
+        "wiki",
+        "knowledge",
+        "kb",
+        "servis",
+        "json",
+        "alan",
+        "field",
+        "season",
+        "seasontype",
+        "içerik sistem",
+        "bu belgede",
+    ]
+    return any(cue in text for cue in explicit_doc_cues)
 
 
 # 3. CONVERSATIONAL REFINER
@@ -257,6 +273,9 @@ Kurallar:
 3. Kısa bir girişten sonra esas çıktıyı ver; gereksiz açıklama yapma.
 4. Sadece Türkçe cevap ver.
 5. [HIZLI BAĞLAM KONTROLÜ - KULLAN] verilmişse çıktı içeriğini bu bağlama dayandır. Bağlam dışı iddia üretme.
+5.1 [BAĞLAM METNİ] varsa alan adları, enum kodları ve değerleri için SADECE bağlamda açıkça geçen bilgileri kullan.
+    - Örn. kod/değer sorularında birebir kodları koru (S/W/E gibi), yeni kategori uydurma.
+    - Bilgi bağlamda yoksa "Bu bilgi dokümanda geçmiyor" diye net belirt.
 6. Kullanıcı önceki içeriğe bir şey "ekle/güncelle/dahil et" dediğinde varsayılan modun "tam sürümü yeniden üretme" olsun.
    - Sadece kullanıcı açıkça "yalnızca şu satırı değiştir", "sadece delta ver" derse kısmi güncelleme yap.
    - Aksi durumda eski + yeni bilgiyi tek parça, baştan yazılmış final çıktı olarak ver.

@@ -15,11 +15,11 @@ from services.cache_service import get_embedding
 _client: Optional[AsyncOpenAI] = None
 
 
-THRESHOLD_IGNORE_MAX = float(os.getenv("KNOWLEDGE_SCORE_IGNORE_MAX", "0.45"))
-THRESHOLD_CONFIRM_MAX = float(os.getenv("KNOWLEDGE_SCORE_CONFIRM_MAX", "0.70"))
+THRESHOLD_IGNORE_MAX = float(os.getenv("KNOWLEDGE_SCORE_IGNORE_MAX", "0.52"))
+THRESHOLD_CONFIRM_MAX = float(os.getenv("KNOWLEDGE_SCORE_CONFIRM_MAX", "0.74"))
 HIGH_CONFIDENCE_TIE_GAP = float(os.getenv("KNOWLEDGE_SCORE_TIE_GAP", "0.08"))
-MIN_SEMANTIC_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_SEMANTIC", "0.58"))
-MIN_LEXICAL_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_LEXICAL", "0.18"))
+MIN_SEMANTIC_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_SEMANTIC", "0.62"))
+MIN_LEXICAL_FOR_RELEVANCE = float(os.getenv("KNOWLEDGE_MIN_LEXICAL", "0.22"))
 KNOWLEDGE_EMBEDDING_MODEL = os.getenv("KNOWLEDGE_EMBEDDING_MODEL", "text-embedding-3-small")
 
 
@@ -536,7 +536,7 @@ async def retrieve_knowledge_context(
             or row[6] > 0.0
         )
     ]
-    selected = (filtered or ranked)[:top_k]
+    selected = filtered[:top_k]
 
     sources = []
     context_lines = []
@@ -562,6 +562,23 @@ async def retrieve_knowledge_context(
         context_lines.append(
             f"[KNOWLEDGE|Doc:{doc.title}|Section:{chunk.section_title or 'Genel'}|Domain:{doc.domain or 'n/a'}|Product:{doc.product or 'n/a'}|sim={semantic_similarity:.3f}|score={score:.3f}]\n{chunk.content}"
         )
+
+    if not selected:
+        return {
+            "routing": routing,
+            "decision": "skip",
+            "top_score": 0.0,
+            "second_score": 0.0,
+            "thresholds": {
+                "ignore_max": THRESHOLD_IGNORE_MAX,
+                "confirm_max": THRESHOLD_CONFIRM_MAX,
+                "high_confidence_tie_gap": HIGH_CONFIDENCE_TIE_GAP,
+            },
+            "needs_user_confirmation": False,
+            "confirmation_prompt": "",
+            "sources": [],
+            "context": "",
+        }
 
     top_score = float(selected[0][0]) if selected else 0.0
     second_score = float(selected[1][0]) if len(selected) > 1 else 0.0
