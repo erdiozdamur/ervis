@@ -168,27 +168,9 @@ def _format_recent_messages_for_prompt(recent_messages: Optional[list[dict[str, 
     return "\n\n[SON KONUŞMA BAĞLAMI]:\n" + "\n".join(lines)
 
 
-def _should_pull_knowledge_context(user_input: str) -> bool:
-    text = (user_input or "").lower()
-    cues = [
-        "doküman",
-        "döküman",
-        "intranet",
-        "wiki",
-        "kb",
-        "knowledge",
-        "bu belgede",
-        "dokümanda",
-        "manual",
-        "runbook",
-        "policy",
-        "prosedür",
-        "hatırl",
-        "notlarım",
-        "geçen konuşma",
-        "daha önce",
-    ]
-    return any(cue in text for cue in cues)
+def _should_pull_knowledge_context(_user_input: str) -> bool:
+    # Always attempt retrieval; similarity gating happens in knowledge_service.
+    return True
 
 
 # 3. CONVERSATIONAL REFINER
