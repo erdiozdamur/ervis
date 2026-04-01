@@ -13,6 +13,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Settings,
   Send,
   Sparkles,
   Trash2,
@@ -71,6 +72,29 @@ function ChatInterface() {
   const [knowledgeError, setKnowledgeError] = useState('');
   const [knowledgeSuccess, setKnowledgeSuccess] = useState('');
   const [hasKnowledgeLoadAttempted, setHasKnowledgeLoadAttempted] = useState(false);
+  const [embeddingSettings, setEmbeddingSettings] = useState({
+    model: 'text-embedding-3-large',
+    chunk_size: 1000,
+    chunk_overlap: 150,
+    min_chunk_size: 250,
+    max_chunk_size: 1800,
+    split_strategy: 'recursive',
+    separators: '\\n\\n,\\n,. , ',
+    preserve_paragraphs: true,
+    normalize_whitespace: true,
+    lowercase: false,
+    remove_urls: false,
+    remove_tables: false,
+    language_hint: 'tr',
+    top_k_index: 8,
+    score_threshold: 0.2,
+    re_rank_enabled: true,
+    re_rank_top_n: 24,
+    batch_size: 32,
+    max_tokens_per_chunk: 800,
+  });
+  const [autoTunedLabel, setAutoTunedLabel] = useState('');
+  const [summaryDrafts, setSummaryDrafts] = useState({});
   const [docForm, setDocForm] = useState({
     title: '',
     domain: 'product',
@@ -103,6 +127,62 @@ function ChatInterface() {
   const createConversation = async (title = null) => {
     const response = await axios.post(CONVERSATIONS_URL, { title });
     return response.data;
+  };
+
+  const autoTuneEmbeddingSettings = (text, extension = '') => {
+    const length = (text || '').trim().length;
+    const isPdf = extension === 'pdf';
+    if (length > 25000 || isPdf) {
+      return {
+        model: 'text-embedding-3-large',
+        chunk_size: 1400,
+        chunk_overlap: 180,
+        min_chunk_size: 300,
+        max_chunk_size: 2200,
+        split_strategy: 'recursive',
+        separators: '\\n\\n,\\n,. , ',
+        preserve_paragraphs: true,
+        normalize_whitespace: true,
+        lowercase: false,
+        remove_urls: false,
+        remove_tables: false,
+        language_hint: docForm.language || 'tr',
+        top_k_index: 10,
+        score_threshold: 0.18,
+        re_rank_enabled: true,
+        re_rank_top_n: 30,
+        batch_size: 48,
+        max_tokens_per_chunk: 1000,
+      };
+    }
+    return {
+      model: 'text-embedding-3-small',
+      chunk_size: 900,
+      chunk_overlap: 120,
+      min_chunk_size: 200,
+      max_chunk_size: 1400,
+      split_strategy: 'recursive',
+      separators: '\\n\\n,\\n,. , ',
+      preserve_paragraphs: true,
+      normalize_whitespace: true,
+      lowercase: false,
+      remove_urls: false,
+      remove_tables: false,
+      language_hint: docForm.language || 'tr',
+      top_k_index: 8,
+      score_threshold: 0.2,
+      re_rank_enabled: true,
+      re_rank_top_n: 20,
+      batch_size: 32,
+      max_tokens_per_chunk: 750,
+    };
+  };
+
+  const summarizeDocumentWithAgent = (rawText) => {
+    const text = (rawText || '').trim().replace(/\s+/g, ' ');
+    if (!text) return '';
+    const preview = text.slice(0, 380);
+    return `Agent özeti: ${preview}${text.length > 380 ? '…' : ''}`;
   };
 
   const loadKnowledgeDocuments = async ({ suppressError = false } = {}) => {
@@ -148,6 +228,8 @@ function ChatInterface() {
       const response = await axios.post(KNOWLEDGE_DOCUMENTS_URL, payload);
       const created = response.data;
       setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+      const generatedSummary = summarizeDocumentWithAgent(payload.content);
+      setSummaryDrafts((prev) => ({ ...prev, [created.id]: generatedSummary }));
       setKnowledgeSuccess(`Doküman işlendi: ${created.chunk_count} parça indekslendi.`);
       setDocForm((prev) => ({ ...prev, title: '', content: '' }));
     } catch (error) {
@@ -180,6 +262,9 @@ function ChatInterface() {
     setKnowledgeSuccess('');
     setIsKnowledgeFileReading(true);
     try {
+      const tuned = autoTuneEmbeddingSettings('', extension);
+      setEmbeddingSettings(tuned);
+      setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti.');
       if (extension === 'pdf') {
         const formData = new FormData();
         formData.append('file', file);
@@ -210,6 +295,9 @@ function ChatInterface() {
         setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
         return;
       }
+      const tunedForContent = autoTuneEmbeddingSettings(normalized, extension);
+      setEmbeddingSettings(tunedForContent);
+      setAutoTunedLabel('Agent, doküman içeriğine göre embedding ayarlarını optimize etti.');
       const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
       setDocForm((prev) => ({
         ...prev,
@@ -719,14 +807,24 @@ function ChatInterface() {
                 <p className="truncate text-sm font-semibold">{user.username}</p>
                 <p className="text-xs text-[var(--text-muted)]">Ervis Operator</p>
               </div>
-              <button
-                type="button"
-                onClick={logout}
-                className="btn-ghost rounded-xl p-2 text-[var(--accent-2)] hover:text-[var(--text-main)]"
-                title="Çıkış Yap"
-              >
-                <LogOut size={16} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('settings')}
+                  className="btn-ghost rounded-xl p-2 text-[var(--accent-2)] hover:text-[var(--text-main)]"
+                  title="Ayarlar"
+                >
+                  <Settings size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="btn-ghost rounded-xl p-2 text-[var(--accent-2)] hover:text-[var(--text-main)]"
+                  title="Çıkış Yap"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -953,6 +1051,55 @@ function ChatInterface() {
             </div>
           )}
           </section>
+        ) : viewMode === 'settings' ? (
+          <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+              <div className="surface-card rounded-2xl p-4">
+                <h2 className="text-lg font-bold">Ayarlar</h2>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">
+                  Bağlam yönetimi: dokümanların vektörel bağlama dönüştürülmesi için embedding modeli ve tüm indeksleme ayarları.
+                </p>
+              </div>
+              <div className="surface-card rounded-2xl p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Bağlam Yönetimi</h3>
+                  <span className="text-xs text-[var(--accent-2)]">{autoTunedLabel || 'Elle güncellenebilir'}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs">Embedding modeli
+                    <select value={embeddingSettings.model} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, model: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
+                      <option value="text-embedding-3-large">text-embedding-3-large</option>
+                      <option value="text-embedding-3-small">text-embedding-3-small</option>
+                    </select>
+                  </label>
+                  <label className="text-xs">Split strategy
+                    <select value={embeddingSettings.split_strategy} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, split_strategy: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
+                      <option value="recursive">recursive</option>
+                      <option value="token">token</option>
+                      <option value="sentence">sentence</option>
+                    </select>
+                  </label>
+                  {['chunk_size', 'chunk_overlap', 'min_chunk_size', 'max_chunk_size', 'top_k_index', 're_rank_top_n', 'batch_size', 'max_tokens_per_chunk', 'score_threshold'].map((key) => (
+                    <label key={key} className="text-xs">{key}
+                      <input value={embeddingSettings[key]} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, [key]: key === 'score_threshold' ? Number(e.target.value) : Number(e.target.value) }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                    </label>
+                  ))}
+                  <label className="text-xs sm:col-span-2">Separators
+                    <input value={embeddingSettings.separators} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, separators: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                  </label>
+                  <label className="text-xs">Language hint
+                    <input value={embeddingSettings.language_hint} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, language_hint: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                  </label>
+                  {['preserve_paragraphs', 'normalize_whitespace', 'lowercase', 'remove_urls', 'remove_tables', 're_rank_enabled'].map((key) => (
+                    <label key={key} className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={embeddingSettings[key]} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, [key]: e.target.checked }))} />
+                      {key}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
         ) : (
           <section className="chat-scroll relative flex-1 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:px-6">
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -1056,7 +1203,13 @@ function ChatInterface() {
                             <p className="mt-1 text-xs text-[var(--text-muted)]">
                               domain: {doc.domain || 'n/a'} · product: {doc.product || 'n/a'} · chunk: {doc.chunk_count}
                             </p>
-                            {doc.summary && <p className="mt-2 line-clamp-3 text-xs text-[var(--text-muted)]">{doc.summary}</p>}
+                            <textarea
+                              value={summaryDrafts[doc.id] ?? doc.summary ?? ''}
+                              onChange={(e) => setSummaryDrafts((prev) => ({ ...prev, [doc.id]: e.target.value }))}
+                              placeholder="Agent özeti burada görünür, istersen düzenleyebilirsin."
+                              rows={3}
+                              className="mt-2 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-2 py-2 text-xs outline-none focus:border-[rgba(126,168,255,0.46)]"
+                            />
                           </div>
                           <button
                             type="button"
