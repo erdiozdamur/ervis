@@ -509,6 +509,28 @@ def _store_chat_history_now(
     )
 
 
+def _get_recent_conversation_messages(
+    db: Session,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    limit: int = 8,
+) -> list[dict[str, str]]:
+    rows = db.execute(
+        select(ChatMessage.role, ChatMessage.content)
+        .where(
+            ChatMessage.user_id == user_id,
+            ChatMessage.conversation_id == conversation_id,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(max(1, min(limit, 20)))
+    ).all()
+
+    return [
+        {"role": role, "content": (content or "")[:2500]}
+        for role, content in reversed(rows)
+    ]
+
+
 def _title_from_message(message: str) -> str:
     cleaned = " ".join((message or "").strip().split())
     if not cleaned:
@@ -1143,11 +1165,18 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
         elif intent_response.intent == IntentType.EXECUTE_TOOL:
             # External Tool flow: Select and run appropriate tool
             print(f"DEBUG: Entering EXECUTE_TOOL flow")
+            recent_messages = _get_recent_conversation_messages(
+                db=db,
+                user_id=user_id,
+                conversation_id=conversation.id,
+                limit=8,
+            )
             result, final_model, tool_sources = await execute_tool_for_user(
                 user_id,
                 request.message,
                 db_session=db,
                 metadata=request.metadata or {},
+                recent_messages=recent_messages,
             )
             print(f"DEBUG: Tool execution result: {result}")
             
