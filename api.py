@@ -1127,6 +1127,24 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             if source_titles:
                 unique_titles = list(dict.fromkeys(source_titles))[:5]
                 meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
+            if knowledge_result.get("needs_user_confirmation"):
+                confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
+                _store_chat_history_now(
+                    db,
+                    user_id,
+                    conversation.id,
+                    request.message,
+                    confirmation_msg,
+                    intent_response.intent.value,
+                    "knowledge-confirmation-gate",
+                )
+                return ChatResponse(
+                    intent=intent_response.intent.value,
+                    message=confirmation_msg,
+                    model_used="knowledge-confirmation-gate",
+                    knowledge_sources=knowledge_result.get("sources", []),
+                    conversation_id=conversation.id,
+                )
 
             answer, final_model = await answer_query(
                 user_id,
