@@ -1,7 +1,13 @@
 # Backend Dockerfile
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
+
+# Keep pip quiet/non-interactive in containers
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
 # Install system dependencies for psycopg2 and other packages
 RUN apt-get update && apt-get install -y \
@@ -9,9 +15,11 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
+# Create an isolated virtual environment and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m venv "$VIRTUAL_ENV" \
+    && pip install --upgrade pip setuptools wheel \
+    && pip install --prefer-binary -r requirements.txt
 
 # Copy application code
 COPY . .

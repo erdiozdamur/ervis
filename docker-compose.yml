@@ -45,6 +45,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.frontend
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM:-backend:8000}
+      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
     depends_on:
       backend:
         condition: service_started
