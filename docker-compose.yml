@@ -27,13 +27,19 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     environment:
-      APP_ENV: ${APP_ENV}
+      APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -50,7 +56,7 @@ services:
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
