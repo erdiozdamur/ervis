@@ -28,21 +28,12 @@ from openai import AuthenticationError as OpenAIAuthenticationError
 from pypdf import PdfReader
 
 from services.llm_router import analyze_user_input, IntentType, get_openai_client
-from services.memory_agent import extract_knowledge, store_knowledge
 from services.retrieval_agent import answer_query
 from services.tool_agent import execute_tool_for_user
 from services.cache_service import check_cache, save_to_cache, clear_user_cache, delete_stale_cache, check_dynamic_status
 from services.web_search_agent import search_the_web
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
-from services.memory_observer import passive_memory_observation
-from models import User, Base, ChatMessage, Conversation, MemoryFact
-from models import KnowledgeChunk
-from services.knowledge_service import (
-    upsert_document_with_chunks,
-    retrieve_knowledge_context,
-    list_documents,
-    delete_document,
-)
+from models import User, Base, ChatMessage, Conversation
 
 # Database Setup
 def _build_database_url() -> str | URL:
@@ -112,10 +103,6 @@ def _init_database():
                     ADD COLUMN IF NOT EXISTS conversation_id UUID;
                 """))
                 conn.execute(text("""
-                    ALTER TABLE chat_messages
-                    ADD COLUMN IF NOT EXISTS knowledge_sources JSONB;
-                """))
-                conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_conversations_user_last_message_at
                     ON conversations (user_id, last_message_at DESC);
                 """))
@@ -147,6 +134,8 @@ def _init_database():
                     CREATE INDEX IF NOT EXISTS ix_memory_facts_user_status
                     ON memory_facts (user_id, fact_status);
                 """))
+                conn.execute(text("DROP TABLE IF EXISTS knowledge_chunks CASCADE;"))
+                conn.execute(text("DROP TABLE IF EXISTS knowledge_documents CASCADE;"))
                 conn.execute(text("""
                     DO $$
                     BEGIN
@@ -266,46 +255,6 @@ def _find_source_message_id(db: Session, user_id: uuid.UUID, conversation_id: Op
     return db.execute(stmt).scalars().first()
 
 
-async def background_memory_extraction(user_id: uuid.UUID, message: str, conversation_id: Optional[uuid.UUID] = None):
-    """
-    Handles memory extraction and storage in the background with a fresh DB session.
-    """
-    db = SessionLocal()
-    try:
-        # 1. Extract knowledge graph
-        extraction, model_name = await extract_knowledge(message)
-        source_message_id = _find_source_message_id(db, user_id, conversation_id, message)
-        # 2. Store in DB with isolation
-        await store_knowledge(
-            user_id=user_id,
-            extraction=extraction,
-            db_session=db,
-            source_message_id=source_message_id,
-        )
-        print(f"Background memory extraction completed for user {user_id} using {model_name}")
-    except Exception as e:
-        print(f"Background memory error: {str(e)}")
-    finally:
-        db.close()
-
-async def background_passive_observation(
-    user_id: uuid.UUID,
-    message: str,
-    response: str,
-    conversation_id: Optional[uuid.UUID] = None,
-):
-    """
-    Handles passive memory observation in the background.
-    """
-    db = SessionLocal()
-    try:
-        source_message_id = _find_source_message_id(db, user_id, conversation_id, message)
-        await passive_memory_observation(user_id, message, response, db, source_message_id=source_message_id)
-    except Exception as e:
-        print(f"Background observation error: {str(e)}")
-    finally:
-        db.close()
-
 def store_chat_pair(
     db: Session,
     user_id: uuid.UUID,
@@ -314,7 +263,6 @@ def store_chat_pair(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
-    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     """
     Persist a compact chat history while keeping a strict per-user cap.
@@ -351,7 +299,6 @@ def store_chat_pair(
                 content=safe_assistant_message,
                 intent=intent,
                 model_used=model_used,
-                knowledge_sources=knowledge_sources or [],
                 created_at=datetime.now(timezone.utc) + timedelta(microseconds=1),
             )
         )
@@ -416,7 +363,6 @@ class ChatResponse(BaseModel):
     message: str
     model_used: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
-    knowledge_sources: Optional[List[Dict[str, Any]]] = None
     conversation_id: Optional[uuid.UUID] = None
 
 
@@ -446,7 +392,6 @@ class ChatHistoryItem(BaseModel):
     content: str
     model_used: Optional[str] = None
     intent: Optional[str] = None
-    knowledge_sources: Optional[List[Dict[str, Any]]] = None
     timestamp: datetime
 
 class UserRegister(BaseModel):
@@ -460,39 +405,6 @@ class Token(BaseModel):
     user_id: uuid.UUID
     username: str
 
-
-class MemoryMetricsResponse(BaseModel):
-    total_facts: int
-    confirmed_facts: int
-    uncertain_facts: int
-    stale_fact_ratio: float
-    contradiction_rate: float
-
-
-class KnowledgeDocumentIngestRequest(BaseModel):
-    title: str
-    content: str
-    source_type: str = "manual"
-    source_ref: Optional[str] = None
-    domain: Optional[str] = None
-    product: Optional[str] = None
-    language: Optional[str] = "tr"
-    version_tag: Optional[str] = None
-    tags: Optional[Dict[str, Any]] = None
-
-
-class KnowledgeDocumentItem(BaseModel):
-    id: uuid.UUID
-    title: str
-    source_type: str
-    source_ref: Optional[str]
-    domain: Optional[str]
-    product: Optional[str]
-    language: Optional[str]
-    version_tag: Optional[str]
-    summary: Optional[str]
-    chunk_count: int
-    updated_at: datetime
 
 
 def _extract_text_from_uploaded_file(file_name: str, payload: bytes) -> str:
@@ -535,60 +447,6 @@ INTENT_CONFIDENCE_THRESHOLD = 0.62
 HIGH_RISK_INTENTS = {IntentType.QUERY_KNOWLEDGE, IntentType.EXECUTE_TOOL}
 
 
-def _is_explicit_memory_query(message: str) -> bool:
-    text = (message or "").lower()
-    memory_cues = [
-        "hatırl",
-        "hafıza",
-        "notlarım",
-        "daha önce",
-        "geçen",
-        "konuşmamız",
-        "söylemiştim",
-        "kaydetti",
-        "profilimde",
-    ]
-    return any(cue in text for cue in memory_cues)
-
-
-def _is_explicit_document_query(message: str) -> bool:
-    text = (message or "").lower()
-    doc_cues = [
-        "doküman",
-        "döküman",
-        "intranet",
-        "wiki",
-        "kb",
-        "knowledge",
-        "bu belgede",
-        "dokümanda",
-        "içerik sisteminde",
-        "manual",
-        "runbook",
-        "policy",
-        "prosedür",
-    ]
-    return any(cue in text for cue in doc_cues)
-
-
-def _should_attempt_knowledge_retrieval(
-    message: str,
-    intent: IntentType,
-    confidence_score: float,
-) -> bool:
-    """
-    Knowledge retrieval attempt policy:
-    - Query clearly references uploaded/internal docs, OR
-    - Router strongly indicates QUERY_KNOWLEDGE intent.
-    - Otherwise skip retrieval to reduce irrelevant chunk usage.
-    """
-    if _is_explicit_document_query(message):
-        return True
-    if intent == IntentType.QUERY_KNOWLEDGE and confidence_score >= 0.62:
-        return True
-    return False
-
-
 def _should_gate_for_clarification(intent: IntentType, confidence_score: float) -> bool:
     return intent in HIGH_RISK_INTENTS and confidence_score < INTENT_CONFIDENCE_THRESHOLD
 
@@ -620,7 +478,7 @@ def _get_latest_confirmation_gate(
             ChatMessage.user_id == user_id,
             ChatMessage.conversation_id == conversation_id,
             ChatMessage.role == "assistant",
-            ChatMessage.model_used == "knowledge-confirmation-gate",
+            ChatMessage.model_used == "intent-clarification-gate",
         )
         .order_by(ChatMessage.created_at.desc())
         .limit(1)
@@ -682,7 +540,6 @@ def _store_chat_history_now(
     assistant_message: str,
     intent: Optional[str],
     model_used: Optional[str],
-    knowledge_sources: Optional[List[Dict[str, Any]]] = None,
 ):
     store_chat_pair(
         db,
@@ -691,8 +548,7 @@ def _store_chat_history_now(
         user_message,
         assistant_message,
         intent,
-        model_used,
-        knowledge_sources,
+        model_used
     )
 
 
@@ -921,7 +777,6 @@ async def get_conversation_messages(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
-            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -977,7 +832,6 @@ async def get_chat_history(
             content=row.content,
             model_used=row.model_used,
             intent=row.intent,
-            knowledge_sources=row.knowledge_sources or [],
             timestamp=row.created_at,
         )
         for row in rows
@@ -1007,184 +861,6 @@ async def clear_chat_history(
     return {"message": "Conversation history cleared"}
 
 
-@app.get("/api/memory/metrics", response_model=MemoryMetricsResponse)
-async def memory_metrics(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    total_facts = db.execute(
-        select(func.count()).select_from(MemoryFact).where(MemoryFact.user_id == current_user.id)
-    ).scalar_one()
-    confirmed_facts = db.execute(
-        select(func.count()).select_from(MemoryFact).where(
-            MemoryFact.user_id == current_user.id,
-            MemoryFact.fact_status == "confirmed",
-        )
-    ).scalar_one()
-    uncertain_facts = db.execute(
-        select(func.count()).select_from(MemoryFact).where(
-            MemoryFact.user_id == current_user.id,
-            or_(MemoryFact.fact_status.in_(["inferred", "negated", "outdated"]), MemoryFact.confidence_score < 0.55),
-        )
-    ).scalar_one()
-    outdated_facts = db.execute(
-        select(func.count()).select_from(MemoryFact).where(
-            MemoryFact.user_id == current_user.id,
-            MemoryFact.fact_status == "outdated",
-        )
-    ).scalar_one()
-    contradiction_facts = db.execute(
-        select(func.count()).select_from(MemoryFact).where(
-            MemoryFact.user_id == current_user.id,
-            MemoryFact.fact_status.in_(["negated", "outdated"]),
-        )
-    ).scalar_one()
-
-    stale_ratio = (float(outdated_facts) / float(total_facts)) if total_facts else 0.0
-    contradiction_rate = (float(contradiction_facts) / float(total_facts)) if total_facts else 0.0
-    return MemoryMetricsResponse(
-        total_facts=total_facts,
-        confirmed_facts=confirmed_facts,
-        uncertain_facts=uncertain_facts,
-        stale_fact_ratio=round(stale_ratio, 4),
-        contradiction_rate=round(contradiction_rate, 4),
-    )
-
-
-@app.post("/api/knowledge/documents", response_model=KnowledgeDocumentItem)
-async def ingest_knowledge_document(
-    request: KnowledgeDocumentIngestRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    doc = await upsert_document_with_chunks(
-        db_session=db,
-        user_id=current_user.id,
-        title=request.title,
-        content=request.content,
-        source_type=request.source_type,
-        source_ref=request.source_ref,
-        domain=request.domain,
-        product=request.product,
-        language=request.language,
-        version_tag=request.version_tag,
-        tags=request.tags or {},
-    )
-    chunk_count = db.execute(
-        select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.document_id == doc.id)
-    ).scalar_one()
-    return KnowledgeDocumentItem(
-        id=doc.id,
-        title=doc.title,
-        source_type=doc.source_type,
-        source_ref=doc.source_ref,
-        domain=doc.domain,
-        product=doc.product,
-        language=doc.language,
-        version_tag=doc.version_tag,
-        summary=doc.summary,
-        chunk_count=int(chunk_count),
-        updated_at=doc.updated_at,
-    )
-
-
-@app.post("/api/knowledge/documents/upload", response_model=KnowledgeDocumentItem)
-async def upload_knowledge_document(
-    file: UploadFile = File(...),
-    title: Optional[str] = Form(None),
-    domain: Optional[str] = Form(None),
-    product: Optional[str] = Form(None),
-    language: Optional[str] = Form("tr"),
-    version_tag: Optional[str] = Form(None),
-    source_ref: Optional[str] = Form(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    payload = await file.read()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Dosya boş olamaz.")
-
-    extracted = _extract_text_from_uploaded_file(file.filename or "document", payload)
-    if len(extracted.strip()) < 40:
-        raise HTTPException(status_code=400, detail="Dosya içeriği indeksleme için en az 40 karakter olmalı.")
-
-    inferred_title = (title or "").strip() or os.path.splitext(file.filename or "Untitled")[0]
-    doc = await upsert_document_with_chunks(
-        db_session=db,
-        user_id=current_user.id,
-        title=inferred_title,
-        content=extracted,
-        source_type="file",
-        source_ref=(source_ref or "").strip() or file.filename,
-        domain=(domain or "").strip() or "product",
-        product=(product or "").strip() or None,
-        language=(language or "tr").strip() or "tr",
-        version_tag=(version_tag or "").strip() or None,
-        tags={},
-    )
-    chunk_count = db.execute(
-        select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.document_id == doc.id)
-    ).scalar_one()
-    return KnowledgeDocumentItem(
-        id=doc.id,
-        title=doc.title,
-        source_type=doc.source_type,
-        source_ref=doc.source_ref,
-        domain=doc.domain,
-        product=doc.product,
-        language=doc.language,
-        version_tag=doc.version_tag,
-        summary=doc.summary,
-        chunk_count=int(chunk_count),
-        updated_at=doc.updated_at,
-    )
-
-
-@app.get("/api/knowledge/documents", response_model=List[KnowledgeDocumentItem])
-async def get_knowledge_documents(
-    limit: int = 50,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    docs = list_documents(db_session=db, user_id=current_user.id, limit=limit)
-    doc_ids = [d.id for d in docs]
-    counts: Dict[uuid.UUID, int] = {}
-    if doc_ids:
-        rows = db.execute(
-            select(KnowledgeChunk.document_id, func.count().label("chunk_count"))
-            .where(KnowledgeChunk.document_id.in_(doc_ids))
-            .group_by(KnowledgeChunk.document_id)
-        ).all()
-        counts = {row.document_id: int(row.chunk_count) for row in rows}
-
-    return [
-        KnowledgeDocumentItem(
-            id=doc.id,
-            title=doc.title,
-            source_type=doc.source_type,
-            source_ref=doc.source_ref,
-            domain=doc.domain,
-            product=doc.product,
-            language=doc.language,
-            version_tag=doc.version_tag,
-            summary=doc.summary,
-            chunk_count=counts.get(doc.id, 0),
-            updated_at=doc.updated_at,
-        )
-        for doc in docs
-    ]
-
-
-@app.delete("/api/knowledge/documents/{document_id}")
-async def remove_knowledge_document(
-    document_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    deleted = delete_document(db_session=db, user_id=current_user.id, document_id=document_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return {"message": "Knowledge document deleted"}
 
 
 @app.post("/api/chat/attachments/extract", response_model=ChatAttachmentExtractResponse)
@@ -1285,12 +961,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                             request.message,
                             skip_msg,
                             IntentType.GENERAL_CHAT.value,
-                            "knowledge-confirmation-gate",
+                            "intent-clarification-gate",
                         )
                         return ChatResponse(
                             intent=IntentType.GENERAL_CHAT.value,
                             message=skip_msg,
-                            model_used="knowledge-confirmation-gate",
+                            model_used="intent-clarification-gate",
                             conversation_id=conversation.id,
                         )
         
@@ -1329,19 +1005,9 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 conversation_id=conversation.id,
             )
 
-        # Guardrail: LLM router sometimes under-classifies doc-based sorular as GENERAL_CHAT.
-        if (
-            intent_response.intent == IntentType.GENERAL_CHAT
-            and _is_explicit_document_query(effective_message)
-        ):
-            print("DEBUG: Promoting GENERAL_CHAT to QUERY_KNOWLEDGE due to explicit document cue.")
-            intent_response.intent = IntentType.QUERY_KNOWLEDGE
-            intent_response.confidence_score = max(intent_response.confidence_score, 0.70)
-
         # Step 2: Route based on intent
         if intent_response.intent == IntentType.LOG_ENTITY:
             # Dual-Track: Run memory extraction in background and return immediately
-            background_tasks.add_task(background_memory_extraction, user_id, effective_message, conversation.id)
             
             # Flush relevant cache because system knowledge changed (Smart clearing)
             await clear_user_cache(user_id, db_session=db, hint=effective_message)
@@ -1350,7 +1016,6 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             ack = intent_response.suggested_acknowledgment or "Anladım, bu bilgiyi hafızama not ediyorum."
             
             # Passive observation in parallel to extraction
-            background_tasks.add_task(background_passive_observation, user_id, effective_message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
@@ -1370,11 +1035,9 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             
         elif intent_response.intent == IntentType.QUERY_KNOWLEDGE:
             # 1. Semantic Cache Check (Mandatory Read Bypass inside check_cache)
-            can_use_cache = not _is_explicit_document_query(effective_message)
-            cached_response = await check_cache(user_id, effective_message, db_session=db) if can_use_cache else None
+            cached_response = await check_cache(user_id, effective_message, db_session=db)
             if cached_response:
                 # IMPORTANT: Even on cache hit, trigger observation so system learns from context!
-                background_tasks.add_task(background_passive_observation, user_id, effective_message, cached_response, conversation.id)
                 _store_chat_history_now(
                     db,
                     user_id,
@@ -1389,7 +1052,6 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                     intent=intent_response.intent.value,
                     message=cached_response,
                     model_used="pgvector-cache",
-                    knowledge_sources=[],
                     conversation_id=conversation.id,
                 )
             
@@ -1409,49 +1071,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 loc = m.get("location", {}) or {}
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
-            
-            should_use_knowledge_context = _should_attempt_knowledge_retrieval(
-                effective_message,
-                intent_response.intent,
-                intent_response.confidence_score,
-            )
             knowledge_result = {"context": "", "sources": []}
-            if should_use_knowledge_context:
-                knowledge_result = await retrieve_knowledge_context(
-                    db_session=db,
-                    user_id=user_id,
-                    query=effective_message,
-                    metadata=request.metadata or {},
-                    top_k=8,
-                )
-            else:
-                print(
-                    "DEBUG: Skipping knowledge retrieval due to low-confidence QUERY_KNOWLEDGE "
-                    f"(confidence={intent_response.confidence_score:.2f})"
-                )
-            source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
-            if source_titles:
-                unique_titles = list(dict.fromkeys(source_titles))[:5]
-                meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
-            if knowledge_result.get("needs_user_confirmation"):
-                confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
-                _store_chat_history_now(
-                    db,
-                    user_id,
-                    conversation.id,
-                    effective_message,
-                    confirmation_msg,
-                    intent_response.intent.value,
-                    "knowledge-confirmation-gate",
-                    knowledge_result.get("sources", []),
-                )
-                return ChatResponse(
-                    intent=intent_response.intent.value,
-                    message=confirmation_msg,
-                    model_used="knowledge-confirmation-gate",
-                    knowledge_sources=knowledge_result.get("sources", []),
-                    conversation_id=conversation.id,
-                )
 
             answer, final_model = await answer_query(
                 user_id,
@@ -1460,14 +1080,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 web_context=web_context,
                 metadata_context=meta_str,
                 knowledge_context=knowledge_result.get("context", ""),
-                knowledge_sources=knowledge_result.get("sources", []),
             )
             
             # 4. Save to cache (Mandatory Write Bypass inside save_to_cache)
             await save_to_cache(user_id, effective_message, answer, db_session=db)
             
             # 5. Passive Observation
-            background_tasks.add_task(background_passive_observation, user_id, effective_message, answer, conversation.id)
             effective_model = f"{final_model} + web-search" if web_context else final_model
             _store_chat_history_now(
                 db,
@@ -1476,15 +1094,13 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 effective_message,
                 answer,
                 intent_response.intent.value,
-                effective_model,
-                knowledge_result.get("sources", []),
+                effective_model
             )
             
             return ChatResponse(
                 intent=intent_response.intent.value,
                 message=answer,
                 model_used=effective_model,
-                knowledge_sources=knowledge_result.get("sources", []),
                 conversation_id=conversation.id,
             )
             
@@ -1507,8 +1123,6 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
             print(f"DEBUG: Tool execution result: {result}")
             
             # Dual-Track: Even after tool execution, extract memory in background
-            background_tasks.add_task(background_memory_extraction, user_id, effective_message, conversation.id)
-            background_tasks.add_task(background_passive_observation, user_id, effective_message, result, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
@@ -1516,8 +1130,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 effective_message,
                 result,
                 intent_response.intent.value,
-                final_model,
-                tool_sources,
+                final_model
             )
             
             # Flush relevant cache because system state changed (Smart clearing)
@@ -1527,13 +1140,11 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 intent=intent_response.intent.value,
                 message=result,
                 model_used=final_model,
-                knowledge_sources=tool_sources,
                 conversation_id=conversation.id,
             )
             
         else: # GENERAL_CHAT
             ack = intent_response.suggested_acknowledgment or "Merhaba! Size nasıl yardımcı olabilirim?"
-            background_tasks.add_task(background_passive_observation, user_id, effective_message, ack, conversation.id)
             _store_chat_history_now(
                 db,
                 user_id,
