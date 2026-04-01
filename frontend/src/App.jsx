@@ -6,7 +6,6 @@ import {
   BookOpen,
   ChevronDown,
   Command,
-  Database,
   FileText,
   ListChecks,
   Loader2,
@@ -308,7 +307,6 @@ function ChatInterface() {
           role: item.role,
           content: clampText(item.content),
           model_used: item.model_used || null,
-          knowledge_sources: item.knowledge_sources || [],
           timestamp: item.timestamp || new Date().toISOString(),
         }));
         setMessages(trimMessages(normalized));
@@ -380,7 +378,6 @@ function ChatInterface() {
           role: 'assistant',
           content: clampText(response.data.message),
           model_used: response.data.model_used,
-          knowledge_sources: response.data.knowledge_sources || [],
           timestamp: new Date().toISOString(),
         },
       ]));
@@ -665,14 +662,6 @@ function ChatInterface() {
             >
               <BookOpen size={14} className="mr-1 inline" />
               Sohbet
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('knowledge')}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold ${viewMode === 'knowledge' ? 'btn-accent' : 'btn-ghost'}`}
-            >
-              <Database size={14} className="mr-1 inline" />
-              Knowledge
             </button>
           </div>
           <div className="mb-3 flex items-center justify-between">
@@ -959,29 +948,6 @@ function ChatInterface() {
                       )}
                       <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
-                    {msg.role === 'assistant' && Array.isArray(msg.knowledge_sources) && msg.knowledge_sources.length > 0 && (
-                      <div className="flex flex-wrap gap-2 text-[11px]">
-                        {Array.from(
-                          new Map(
-                            msg.knowledge_sources.map((source, sourceIdx) => [
-                              source.document_id || source.title || `doc-${sourceIdx}`,
-                              source,
-                            ]),
-                          ).values(),
-                        )
-                          .slice(0, 4)
-                          .map((source, sourceIdx) => (
-                            <span
-                              key={`${source.document_id || source.title || 'doc'}-${sourceIdx}`}
-                              className="rounded-full bg-[rgba(107,212,255,0.16)] px-2 py-1 text-[var(--accent-2)]"
-                              title={`${source.domain || 'n/a'} / ${source.product || 'n/a'}`}
-                            >
-                              <FileText size={10} className="mr-1 inline" />
-                              {source.title || 'Doküman'}
-                            </span>
-                          ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
