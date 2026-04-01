@@ -1,14 +1,18 @@
 import os
 import uuid
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional
+
 from openai import AsyncOpenAI
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from models import Task
 
 # load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
+
 
 def get_openai_client() -> AsyncOpenAI:
     global _client
@@ -18,6 +22,15 @@ def get_openai_client() -> AsyncOpenAI:
             raise ValueError("OPENAI_API_KEY is missing. Please set it in the .env file.")
         _client = AsyncOpenAI(api_key=api_key)
     return _client
+
+
+class ToolHandlingDecision(BaseModel):
+    mode: str = Field(description="EXECUTE_AVAILABLE_TOOL or DELIVER_CONTENT_DIRECTLY")
+    requires_unavailable_integration: bool = Field(
+        description="True when user requests an external action (jira/mail/crm etc.) that this system cannot execute directly."
+    )
+    reasoning: str = Field(description="Short reasoning.")
+
 
 # 1. TOOL FUNCTIONS (Real Persistence)
 async def create_task(user_id: uuid.UUID, title: str, description: str, db_session: Session) -> str:
@@ -33,22 +46,25 @@ async def create_task(user_id: uuid.UUID, title: str, description: str, db_sessi
     print(f"DEBUG: Task '{title}' committed to DB.")
     return f"Görev '{title}' başarıyla oluşturuldu ve kaydedildi."
 
+
 async def show_tasks(user_id: uuid.UUID, db_session: Session, filter_keyword: Optional[str] = None) -> str:
     stmt = select(Task).where(Task.user_id == user_id, Task.status == "pending")
     if filter_keyword:
         stmt = stmt.where(Task.title.ilike(f"%{filter_keyword}%"))
-    
+
     tasks = db_session.execute(stmt).scalars().all()
-    
+
     if not tasks:
         return "Şu an kayıtlı bekleyen bir hatırlatıcınız veya göreviniz bulunmuyor."
-        
+
     task_list = "\n".join([f"- {t.title}: {t.description or ''}" for t in tasks])
     return f"Bekleyen görevleriniz:\n{task_list}"
+
 
 async def control_device(user_id: uuid.UUID, device_name: str, state: str) -> str:
     # still mock as we don't have smart home integration yet
     return f"Cihaz '{device_name}' durumu '{state}' olarak başarıyla güncellendi."
+
 
 # 2. OPENAI TOOL SCHEMAS
 TOOLS = [
@@ -97,6 +113,44 @@ TOOLS = [
     }
 ]
 
+
+async def decide_tool_handling(user_input: str) -> ToolHandlingDecision:
+    """
+    Decide whether we should execute an available internal tool
+    or directly deliver requested content to the user.
+    """
+    client = get_openai_client()
+    system_prompt = """Sen Ervis'in eylem karar katmanısın.
+Sistemde SADECE şu araçlar var:
+- create_task: görev/hatırlatıcı kaydetme
+- show_tasks: görevleri listeleme
+- control_device: basit cihaz komutu
+
+Karar ver:
+1) Kullanıcı isteği bu üç araçtan biri ile GERÇEKTEN uygulanabiliyorsa mode=EXECUTE_AVAILABLE_TOOL.
+2) Diğer tüm isteklerde mode=DELIVER_CONTENT_DIRECTLY.
+
+Özellikle şu tür taleplerde DELIVER_CONTENT_DIRECTLY seç:
+- "jira içeriği yaz", "mail taslağı oluştur", "metin/özet/duyuru hazırla"
+- Harici sisteme kayıt/açma/gönderme isteniyor ama burada entegrasyon yoksa.
+
+Kurallar:
+- Entegrasyon yoksa 'yaptım/gönderdim/açtım' gibi iddiaya izin verme.
+- requires_unavailable_integration sadece harici aksiyon talebi varsa true olsun.
+"""
+
+    response = await client.beta.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input},
+        ],
+        response_format=ToolHandlingDecision,
+        temperature=0.0,
+    )
+    return response.choices[0].message.parsed
+
+
 # 3. CONVERSATIONAL REFINER
 async def generate_natural_response(user_input: str, tool_name: str, tool_result: str) -> str:
     """
@@ -104,8 +158,8 @@ async def generate_natural_response(user_input: str, tool_name: str, tool_result
     This uses a cheap LLM call to bridge the gap between 'system result' and 'premium assistant'.
     """
     client = get_openai_client()
-    
-    system_prompt = """Sen Ervis'sin. Bir aracı (tool) başarıyla çalıştırdın. 
+
+    system_prompt = """Sen Ervis'sin. Bir aracı (tool) başarıyla çalıştırdın.
 Görevin: Kullanıcının orijinal isteğini ve aracın sonucunu alıp, kullanıcıya işin bittiğini çok doğal, samimi ve yardımcı bir dille açıklamak.
 
 KURALLAR:
@@ -115,7 +169,7 @@ KURALLAR:
 4. Sadece Türkçe cevap ver.
 """
     prompt = f"Kullanıcı İsteği: {user_input}\nÇalıştırılan Araç: {tool_name}\nAraç Sonucu: {tool_result}"
-    
+
     try:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -129,14 +183,61 @@ KURALLAR:
         return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error in generate_natural_response: {e}")
-        return tool_result # Fallback to original mechanical message
+        return tool_result
+
+
+async def generate_direct_content(user_input: str, requires_unavailable_integration: bool) -> str:
+    """
+    Generate directly requested output (mail, jira text, announcement, etc.)
+    without pretending a real external action was performed.
+    """
+    client = get_openai_client()
+    transparency_note = """
+Eğer kullanıcı harici bir sistemde aksiyon (ör. Jira açma, e-posta gönderme, CRM kaydetme) istiyorsa
+ve gerçek entegrasyon yoksa ilk satırda kısa bir şeffaflık notu ver:
+"Bunu ilgili sisteme otomatik işleyemiyorum; ama aşağıda doğrudan kullanabileceğin içeriği hazırladım."
+""" if requires_unavailable_integration else ""
+
+    system_prompt = f"""Sen Ervis'sin.
+Görev: Kullanıcının istediği çıktıyı DOĞRUDAN üret.
+
+Kurallar:
+1. Kullanıcının istediği şeyi (mail, ticket içeriği, plan, rapor, metin vb.) tam ve kopyalanabilir biçimde ver.
+2. Asla yapılmayan bir işlemi yapılmış gibi anlatma ("oluşturdum", "gönderdim", "açtım" deme).
+3. Kısa bir girişten sonra esas çıktıyı ver; gereksiz açıklama yapma.
+4. Sadece Türkçe cevap ver.
+{transparency_note}
+"""
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input},
+        ],
+        temperature=0.4,
+        max_tokens=600,
+    )
+    return response.choices[0].message.content.strip()
+
 
 # 4. TOOL EXECUTION LOGIC
 async def execute_tool_for_user(user_id: uuid.UUID, user_input: str, db_session: Session) -> tuple[str, str]:
     client = get_openai_client()
-    
+
+    decision = await decide_tool_handling(user_input)
+    print(f"DEBUG: Tool handling decision={decision.mode}, unavailable_integration={decision.requires_unavailable_integration}")
+
+    if decision.mode != "EXECUTE_AVAILABLE_TOOL":
+        direct_response = await generate_direct_content(
+            user_input=user_input,
+            requires_unavailable_integration=decision.requires_unavailable_integration,
+        )
+        return direct_response, "gpt-4o-mini"
+
     system_prompt = """Sen Ervis'in araç kullanım katmanısın. Kullanıcının isteğine göre uygun aracı seç ve çalıştır.
-HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim", "listele", "göster", "neler var?", "var mı?" gibi ifadeler kullanırsa mutlaka 'show_tasks' aracını çağır."""
+HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim", "listele", "göster", "neler var?", "var mı?" gibi ifadeler kullanırsa mutlaka 'show_tasks' aracını çağır.
+Sadece gerçekten mevcut araçlarla yapılabilen isteklerde tool çağır."""
 
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
@@ -147,14 +248,14 @@ HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim"
         tools=TOOLS,
         tool_choice="auto"
     )
-    
+
     message = response.choices[0].message
-    
+
     if message.tool_calls:
         for tool_call in message.tool_calls:
             function_name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments)
-            
+
             raw_result = ""
             if function_name == "create_task":
                 print(f"DEBUG: Dispatching to create_task with args: {arguments}")
@@ -164,10 +265,13 @@ HATIRLATICI/GÖREV LİSTELEME: Kullanıcı "hatırlatıcılarım", "görevlerim"
                 raw_result = await show_tasks(user_id=user_id, db_session=db_session, **arguments)
             elif function_name == "control_device":
                 raw_result = await control_device(user_id, **arguments)
-            
+
             if raw_result:
-                # Refine the mechanical raw_result into a natural response
                 natural_response = await generate_natural_response(user_input, function_name, raw_result)
                 return natural_response, response.model
-                
-    return "Bu işlem için uygun bir araç bulunamadı veya anlaşılamadı.", response.model
+
+    fallback = await generate_direct_content(
+        user_input=user_input,
+        requires_unavailable_integration=False,
+    )
+    return fallback, response.model
