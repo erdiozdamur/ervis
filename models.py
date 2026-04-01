@@ -114,7 +114,7 @@ class KnowledgeChunk(Base):
     content: Mapped[str] = mapped_column(String, nullable=False)
     token_count_hint: Mapped[int] = mapped_column(nullable=False, default=0)
     embedding: Mapped[list] = mapped_column(Vector(1536), nullable=False)
-    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    chunk_metadata: Mapped[Dict[str, Any]] = mapped_column("metadata", JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

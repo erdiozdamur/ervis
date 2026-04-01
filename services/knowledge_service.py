@@ -257,7 +257,7 @@ async def upsert_document_with_chunks(
                 content=c["content"],
                 token_count_hint=int(c["token_count_hint"]),
                 embedding=emb,
-                metadata={
+                chunk_metadata={
                     "domain": domain,
                     "product": product,
                     "source_type": source_type,
