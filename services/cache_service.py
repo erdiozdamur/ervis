@@ -19,15 +19,16 @@ def get_openai_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(api_key=api_key)
     return _client
 
-async def get_embedding(text: str) -> List[float]:
+async def get_embedding(text: str, model: str = "text-embedding-3-small") -> List[float]:
     client = get_openai_client()
     # Prepend hidden UTC timestamp for time-aware semantic matching
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     timestamped_text = f"[{now_utc}] {text}"
+    safe_model = model if model == "text-embedding-3-small" else "text-embedding-3-small"
     
     response = await client.embeddings.create(
         input=timestamped_text,
-        model="text-embedding-3-small"
+        model=safe_model
     )
     return response.data[0].embedding
 
