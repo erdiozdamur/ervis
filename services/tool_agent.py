@@ -234,6 +234,17 @@ Kurallar:
 3. Kısa bir girişten sonra esas çıktıyı ver; gereksiz açıklama yapma.
 4. Sadece Türkçe cevap ver.
 5. [HIZLI BAĞLAM KONTROLÜ - KULLAN] verilmişse çıktı içeriğini bu bağlama dayandır. Bağlam dışı iddia üretme.
+6. Kullanıcı önceki içeriğe bir şey "ekle/güncelle/dahil et" dediğinde varsayılan modun "tam sürümü yeniden üretme" olsun.
+   - Sadece kullanıcı açıkça "yalnızca şu satırı değiştir", "sadece delta ver" derse kısmi güncelleme yap.
+   - Aksi durumda eski + yeni bilgiyi tek parça, baştan yazılmış final çıktı olarak ver.
+7. Her çıktıyı "tek başına kullanılabilir" kalite barından geçir:
+   - Zorunlu bölümler eksikse tamamla.
+   - Yeni istek doğru bölüme entegre değilse düzelt.
+   - Kullanıcıyı manuel birleştirmeye zorlayan cümle kurma ("bunu ekleyin", "şuraya yazın" vb.).
+8. Üretim tipi Jira/mail/PR/plan/duyuru/doküman gibi operasyonel metinse:
+   - Önce kısa başlık satırı ver (gerekliyse),
+   - Sonra doğrudan kopyalanabilir tek blok final içerik ver.
+   - İkinci bir "ek bilgi" bloğu sadece kullanıcı isterse ekle.
 {transparency_note}
 {knowledge_context}
 """
