@@ -572,16 +572,21 @@ def _is_explicit_document_query(message: str) -> bool:
 
 
 def _should_attempt_knowledge_retrieval(
-    _message: str,
-    _intent: IntentType,
-    _confidence_score: float,
+    message: str,
+    intent: IntentType,
+    confidence_score: float,
 ) -> bool:
     """
     Knowledge retrieval attempt policy:
-    - Always attempt retrieval for user prompts.
-    - Retrieval service itself decides whether to use/skip context based on similarity.
+    - Query clearly references uploaded/internal docs, OR
+    - Router strongly indicates QUERY_KNOWLEDGE intent.
+    - Otherwise skip retrieval to reduce irrelevant chunk usage.
     """
-    return True
+    if _is_explicit_document_query(message):
+        return True
+    if intent == IntentType.QUERY_KNOWLEDGE and confidence_score >= 0.62:
+        return True
+    return False
 
 
 def _should_gate_for_clarification(intent: IntentType, confidence_score: float) -> bool:
