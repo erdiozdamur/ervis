@@ -573,6 +573,11 @@ def _backfill_legacy_conversations():
 
 _init_database()
 
+@app.get("/healthz")
+def healthz(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {"status": "ok"}
+
 
 @app.post("/api/chat/conversations", response_model=ConversationItem)
 async def create_conversation(
