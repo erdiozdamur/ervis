@@ -961,16 +961,25 @@ function ChatInterface() {
                     </div>
                     {msg.role === 'assistant' && Array.isArray(msg.knowledge_sources) && msg.knowledge_sources.length > 0 && (
                       <div className="flex flex-wrap gap-2 text-[11px]">
-                        {msg.knowledge_sources.slice(0, 4).map((source, sourceIdx) => (
-                          <span
-                            key={`${source.title || 'doc'}-${sourceIdx}`}
-                            className="rounded-full bg-[rgba(107,212,255,0.16)] px-2 py-1 text-[var(--accent-2)]"
-                            title={`${source.domain || 'n/a'} / ${source.product || 'n/a'}`}
-                          >
-                            <FileText size={10} className="mr-1 inline" />
-                            {source.title || 'Doküman'}
-                          </span>
-                        ))}
+                        {Array.from(
+                          new Map(
+                            msg.knowledge_sources.map((source, sourceIdx) => [
+                              source.document_id || source.title || `doc-${sourceIdx}`,
+                              source,
+                            ]),
+                          ).values(),
+                        )
+                          .slice(0, 4)
+                          .map((source, sourceIdx) => (
+                            <span
+                              key={`${source.document_id || source.title || 'doc'}-${sourceIdx}`}
+                              className="rounded-full bg-[rgba(107,212,255,0.16)] px-2 py-1 text-[var(--accent-2)]"
+                              title={`${source.domain || 'n/a'} / ${source.product || 'n/a'}`}
+                            >
+                              <FileText size={10} className="mr-1 inline" />
+                              {source.title || 'Doküman'}
+                            </span>
+                          ))}
                       </div>
                     )}
                   </div>

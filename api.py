@@ -524,6 +524,25 @@ def _compose_message_with_attachments(base_message: str, attachments: Optional[L
     return f"{safe_message}\n\n[EKLER]\n" + "\n\n".join(blocks)
 
 
+def _is_memory_lookup_query(message: str) -> bool:
+    text = (message or "").lower()
+    memory_cues = [
+        "hatırl",
+        "hafız",
+        "notlarım",
+        "daha önce",
+        "geçen",
+        "benim",
+        "oturum",
+        "konuşmamız",
+        "söylemiştim",
+        "kaydetti",
+    ]
+    return any(cue in text for cue in memory_cues)
+
+
+
+
 async def _extract_text_from_image_with_vision(payload: bytes, mime_type: str) -> str:
     encoded = base64.b64encode(payload).decode("utf-8")
     client = get_openai_client()
@@ -1218,36 +1237,37 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
             
-            knowledge_result = await retrieve_knowledge_context(
-                db_session=db,
-                user_id=user_id,
-                query=effective_message,
-                metadata=request.metadata or {},
-                top_k=8,
-            )
-            knowledge_context = knowledge_result.get("context", "")
-            source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
-            if source_titles:
-                unique_titles = list(dict.fromkeys(source_titles))[:5]
-                meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
-            if knowledge_result.get("needs_user_confirmation"):
-                confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
-                _store_chat_history_now(
-                    db,
-                    user_id,
-                    conversation.id,
-                    effective_message,
-                    confirmation_msg,
-                    intent_response.intent.value,
-                    "knowledge-confirmation-gate",
+            knowledge_result = {"context": "", "sources": []}
+            if _is_memory_lookup_query(effective_message):
+                knowledge_result = await retrieve_knowledge_context(
+                    db_session=db,
+                    user_id=user_id,
+                    query=effective_message,
+                    metadata=request.metadata or {},
+                    top_k=8,
                 )
-                return ChatResponse(
-                    intent=intent_response.intent.value,
-                    message=confirmation_msg,
-                    model_used="knowledge-confirmation-gate",
-                    knowledge_sources=knowledge_result.get("sources", []),
-                    conversation_id=conversation.id,
-                )
+                source_titles = [s.get("title") for s in knowledge_result.get("sources", []) if s.get("title")]
+                if source_titles:
+                    unique_titles = list(dict.fromkeys(source_titles))[:5]
+                    meta_str += f"\n[KNOWLEDGE-ROUTING]: domain={knowledge_result.get('routing', {}).get('domain')} | kaynaklar={', '.join(unique_titles)}"
+                if knowledge_result.get("needs_user_confirmation"):
+                    confirmation_msg = knowledge_result.get("confirmation_prompt") or "Bağlamı kullanmamı ister misin?"
+                    _store_chat_history_now(
+                        db,
+                        user_id,
+                        conversation.id,
+                        effective_message,
+                        confirmation_msg,
+                        intent_response.intent.value,
+                        "knowledge-confirmation-gate",
+                    )
+                    return ChatResponse(
+                        intent=intent_response.intent.value,
+                        message=confirmation_msg,
+                        model_used="knowledge-confirmation-gate",
+                        knowledge_sources=knowledge_result.get("sources", []),
+                        conversation_id=conversation.id,
+                    )
 
             answer, final_model = await answer_query(
                 user_id,
@@ -1255,7 +1275,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 db_session=db,
                 web_context=web_context,
                 metadata_context=meta_str,
-                knowledge_context=knowledge_context,
+                knowledge_context=knowledge_result.get("context", ""),
                 knowledge_sources=knowledge_result.get("sources", []),
             )
             
