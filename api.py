@@ -574,9 +574,16 @@ def _backfill_legacy_conversations():
 _init_database()
 
 @app.get("/healthz")
-def healthz(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
+def healthz():
+    """Lightweight liveness probe that does not require external dependencies."""
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz(db: Session = Depends(get_db)):
+    """Readiness probe that verifies database connectivity."""
+    db.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
 
 @app.post("/api/chat/conversations", response_model=ConversationItem)
