@@ -585,6 +585,59 @@ def _should_gate_for_clarification(intent: IntentType, confidence_score: float) 
     return intent in HIGH_RISK_INTENTS and confidence_score < INTENT_CONFIDENCE_THRESHOLD
 
 
+def _parse_confirmation_reply(message: str) -> Optional[str]:
+    text = (message or "").strip().lower()
+    if not text:
+        return None
+    normalized = text.replace(".", "").replace("!", "").replace("?", "").strip()
+    yes_tokens = {"evet", "olur", "tamam", "ok", "onay", "kullan", "devam"}
+    no_tokens = {"hayır", "hayir", "yok", "istemiyorum", "gerek yok", "iptal"}
+    if normalized in {"1", "2"}:
+        return normalized
+    if any(token == normalized for token in yes_tokens):
+        return "yes"
+    if any(token == normalized for token in no_tokens):
+        return "no"
+    return None
+
+
+def _get_latest_confirmation_gate(
+    db: Session,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> Optional[ChatMessage]:
+    return db.execute(
+        select(ChatMessage)
+        .where(
+            ChatMessage.user_id == user_id,
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.role == "assistant",
+            ChatMessage.model_used == "knowledge-confirmation-gate",
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(1)
+    ).scalars().first()
+
+
+def _get_latest_user_message_before(
+    db: Session,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    before_ts: datetime,
+) -> Optional[str]:
+    return db.execute(
+        select(ChatMessage.content)
+        .where(
+            ChatMessage.user_id == user_id,
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.role == "user",
+            ChatMessage.created_at < before_ts,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(1)
+    ).scalars().first()
+
+
 async def _extract_text_from_image_with_vision(payload: bytes, mime_type: str) -> str:
     encoded = base64.b64encode(payload).decode("utf-8")
     client = get_openai_client()
@@ -1201,6 +1254,37 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
         user_id = current_user.id
         effective_message = _compose_message_with_attachments(request.message, request.attachments)
         conversation = _resolve_conversation(db, user_id, request.conversation_id, request.message)
+
+        pending_confirmation = _parse_confirmation_reply(effective_message)
+        if pending_confirmation:
+            gate_message = _get_latest_confirmation_gate(db, user_id, conversation.id)
+            if gate_message:
+                original_question = _get_latest_user_message_before(
+                    db,
+                    user_id,
+                    conversation.id,
+                    gate_message.created_at,
+                )
+                if original_question:
+                    if pending_confirmation in {"yes", "1", "2"}:
+                        effective_message = original_question
+                    else:
+                        skip_msg = "Tamam, bu bağlamı kullanmıyorum. Sorunu bağlamsız yanıtlayayım mı?"
+                        _store_chat_history_now(
+                            db,
+                            user_id,
+                            conversation.id,
+                            request.message,
+                            skip_msg,
+                            IntentType.GENERAL_CHAT.value,
+                            "knowledge-confirmation-gate",
+                        )
+                        return ChatResponse(
+                            intent=IntentType.GENERAL_CHAT.value,
+                            message=skip_msg,
+                            model_used="knowledge-confirmation-gate",
+                            conversation_id=conversation.id,
+                        )
         
         # Step 0: Cleanup stale cache in background
         background_tasks.add_task(delete_stale_cache, db)
