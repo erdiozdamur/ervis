@@ -1,23 +1,66 @@
-const REQUIRED_ENV = ['DATABASE_URL', 'NEXTAUTH_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
-const OPTIONAL_ENV = ['NEXTAUTH_URL', 'ADMIN_EMAIL'];
+import { spawn } from 'node:child_process';
 
-function reportVars(label, keys) {
-  for (const key of keys) {
-    const present = Boolean(process.env[key] && process.env[key].trim().length > 0);
-    console.log(`[startup] ${label} env ${key}: ${present ? 'present' : 'missing'}`);
-  }
+function isPresent(value) {
+  return Boolean(value && value.trim().length > 0);
 }
 
-const missingRequired = REQUIRED_ENV.filter((key) => !process.env[key] || process.env[key].trim().length === 0);
+function getFirst(keys) {
+  for (const key of keys) {
+    if (isPresent(process.env[key])) return process.env[key];
+  }
+  return undefined;
+}
 
-console.log(`[startup] command: node ./scripts/startup.mjs && next start -H 0.0.0.0 -p 3000`);
+function resolveDatabaseUrl() {
+  const direct = getFirst(['DATABASE_URL']);
+  if (direct) return direct;
+
+  const user = process.env.POSTGRES_USER;
+  const password = process.env.POSTGRES_PASSWORD;
+  const database = process.env.POSTGRES_DB;
+  const host = process.env.POSTGRES_HOST ?? 'postgres';
+  const port = process.env.POSTGRES_PORT ?? '5432';
+
+  if (isPresent(user) && isPresent(password) && isPresent(database)) {
+    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  }
+  return undefined;
+}
+
+const resolvedPort = process.env.PORT ?? '3000';
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+const resolvedNextAuthSecret = getFirst(['NEXTAUTH_SECRET', 'JWT_SECRET_KEY']);
+const hasGoogleProvider = isPresent(process.env.GOOGLE_CLIENT_ID) && isPresent(process.env.GOOGLE_CLIENT_SECRET);
+
+if (resolvedDatabaseUrl) process.env.DATABASE_URL = resolvedDatabaseUrl;
+if (resolvedNextAuthSecret) process.env.NEXTAUTH_SECRET = resolvedNextAuthSecret;
+process.env.PORT = resolvedPort;
+
+console.log('[startup] command: next start -H 0.0.0.0 -p 3000');
 console.log(`[startup] cwd: ${process.cwd()}`);
-console.log(`[startup] port: ${process.env.PORT ?? '3000'} (Next.js is started on 3000 explicitly)`);
+console.log(`[startup] port: ${resolvedPort} (Next.js is started on 3000 explicitly)`);
 console.log(`[startup] next binary: ${process.cwd()}/node_modules/.bin/next`);
-reportVars('required', REQUIRED_ENV);
-reportVars('optional', OPTIONAL_ENV);
+console.log(`[startup] required env DATABASE_URL: ${resolvedDatabaseUrl ? 'present' : 'missing'}`);
+console.log(`[startup] required env NEXTAUTH_SECRET/JWT_SECRET_KEY: ${resolvedNextAuthSecret ? 'present' : 'missing'}`);
+console.log(`[startup] optional env NEXTAUTH_URL: ${isPresent(process.env.NEXTAUTH_URL) ? 'present' : 'missing'}`);
+console.log(`[startup] optional env ADMIN_EMAIL: ${isPresent(process.env.ADMIN_EMAIL) ? 'present' : 'missing'}`);
+console.log(`[startup] optional google provider envs: ${hasGoogleProvider ? 'present' : 'missing (Google auth disabled)'}`);
+
+const missingRequired = [];
+if (!resolvedDatabaseUrl) missingRequired.push('DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB');
+if (!resolvedNextAuthSecret) missingRequired.push('NEXTAUTH_SECRET or JWT_SECRET_KEY');
 
 if (missingRequired.length > 0) {
   console.error(`[startup] Missing required environment variable(s): ${missingRequired.join(', ')}`);
   process.exit(1);
 }
+
+const child = spawn('node_modules/.bin/next', ['start', '-H', '0.0.0.0', '-p', '3000'], {
+  stdio: 'inherit',
+  env: process.env,
+});
+
+child.on('exit', (code, signal) => {
+  if (signal) process.kill(process.pid, signal);
+  process.exit(code ?? 1);
+});
