@@ -27,5 +27,10 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
+# Provide an image-level healthcheck so orchestrators that rely on
+# container health metadata always have a probe available.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)" || exit 1
+
 # Command to run the application
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
