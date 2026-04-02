@@ -1,36 +1,19 @@
-# Backend Dockerfile
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Keep pip quiet/non-interactive in containers
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1 \
-    VIRTUAL_ENV=/opt/venv \
-    PATH="/opt/venv/bin:$PATH"
+    PIP_NO_CACHE_DIR=1
 
-# Install system dependencies for psycopg2 and other packages
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create an isolated virtual environment and install dependencies
 COPY requirements.txt .
-RUN python -m venv "$VIRTUAL_ENV" \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install --prefer-binary -r requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r requirements.txt
 
-# Copy application code
-COPY . .
+COPY api.py ./api.py
 
-# Expose port
 EXPOSE 8000
 
-# Provide an image-level healthcheck so orchestrators that rely on
-# container health metadata always have a probe available.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)" || exit 1
 
-# Command to run the application
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

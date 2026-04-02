@@ -1,31 +1,8 @@
 services:
-  db:
-    image: ankane/pgvector:latest
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-ervis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace_with_production_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
-    ports:
-      - target: 5432
-        published: "${POSTGRES_HOST_PORT:-0}"
-        host_ip: 127.0.0.1
-        protocol: tcp
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-    restart: unless-stopped
-
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    environment:
-      APP_ENV: ${APP_ENV:-production}
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -48,10 +25,4 @@ services:
         published: "${FRONTEND_HOST_PORT:-0}"
         host_ip: 127.0.0.1
         protocol: tcp
-    depends_on:
-      backend:
-        condition: service_started
     restart: unless-stopped
-
-volumes:
-  pgdata:
