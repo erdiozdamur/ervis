@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Task
+from services.knowledge_service import retrieve_document_context
 
 # load_dotenv is handled globally in api.py
 _client: Optional[AsyncOpenAI] = None
@@ -207,6 +208,8 @@ KURALLAR:
 async def generate_direct_content(
     user_input: str,
     requires_unavailable_integration: bool,
+    user_id: uuid.UUID,
+    db_session: Session,
     recent_messages: Optional[list[dict[str, str]]] = None,
 ) -> str:
     """
@@ -220,7 +223,12 @@ ve gerçek entegrasyon yoksa ilk satırda kısa bir şeffaflık notu ver:
 "Bunu ilgili sisteme otomatik işleyemiyorum; ama aşağıda doğrudan kullanabileceğin içeriği hazırladım."
 """ if requires_unavailable_integration else ""
 
-    knowledge_context = ""
+    knowledge_context_text, _ = await retrieve_document_context(
+        db_session=db_session,
+        user_id=user_id,
+        query=user_input,
+    )
+    knowledge_context = f"[BAĞLAM METNİ]\n{knowledge_context_text}" if knowledge_context_text else ""
     recent_context = _format_recent_messages_for_prompt(recent_messages)
 
     system_prompt = f"""Sen Ervis'sin.
@@ -282,6 +290,8 @@ async def execute_tool_for_user(
         direct_response = await generate_direct_content(
             user_input=user_input,
             requires_unavailable_integration=decision.requires_unavailable_integration,
+            user_id=user_id,
+            db_session=db_session,
             recent_messages=recent_messages,
         )
         return direct_response, "gpt-4o-mini", []

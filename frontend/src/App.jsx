@@ -27,6 +27,7 @@ const API_URL = '/api/chat';
 const CONVERSATIONS_URL = '/api/chat/conversations';
 const KNOWLEDGE_DOCUMENTS_URL = '/api/knowledge/documents';
 const KNOWLEDGE_DOCUMENT_UPLOAD_URL = '/api/knowledge/documents/upload';
+const KNOWLEDGE_EMBEDDING_RECOMMEND_URL = '/api/knowledge/embedding/recommend';
 const CHAT_ATTACHMENT_EXTRACT_URL = '/api/chat/attachments/extract';
 const CONVERSATION_FETCH_LIMIT = 24;
 const HISTORY_FETCH_LIMIT = 40;
@@ -100,6 +101,7 @@ function ChatInterface() {
   const [selectedDocForContext, setSelectedDocForContext] = useState('draft');
   const [docEmbeddingProfiles, setDocEmbeddingProfiles] = useState({});
   const [pendingRecommendation, setPendingRecommendation] = useState(null);
+  const [isRecommendationModalOpen, setIsRecommendationModalOpen] = useState(false);
   const [summaryDrafts, setSummaryDrafts] = useState({});
   const [docForm, setDocForm] = useState({
     title: '',
@@ -135,55 +137,6 @@ function ChatInterface() {
     return response.data;
   };
 
-  const autoTuneEmbeddingSettings = (text, extension = '') => {
-    const length = (text || '').trim().length;
-    const isPdf = extension === 'pdf';
-    if (length > 25000 || isPdf) {
-      return {
-        model: 'text-embedding-3-large',
-        chunk_size: 1400,
-        chunk_overlap: 180,
-        min_chunk_size: 300,
-        max_chunk_size: 2200,
-        split_strategy: 'recursive',
-        separators: '\\n\\n,\\n,. , ',
-        preserve_paragraphs: true,
-        normalize_whitespace: true,
-        lowercase: false,
-        remove_urls: false,
-        remove_tables: false,
-        language_hint: docForm.language || 'tr',
-        top_k_index: 10,
-        score_threshold: 0.18,
-        re_rank_enabled: true,
-        re_rank_top_n: 30,
-        batch_size: 48,
-        max_tokens_per_chunk: 1000,
-      };
-    }
-    return {
-      model: 'text-embedding-3-small',
-      chunk_size: 900,
-      chunk_overlap: 120,
-      min_chunk_size: 200,
-      max_chunk_size: 1400,
-      split_strategy: 'recursive',
-      separators: '\\n\\n,\\n,. , ',
-      preserve_paragraphs: true,
-      normalize_whitespace: true,
-      lowercase: false,
-      remove_urls: false,
-      remove_tables: false,
-      language_hint: docForm.language || 'tr',
-      top_k_index: 8,
-      score_threshold: 0.2,
-      re_rank_enabled: true,
-      re_rank_top_n: 20,
-      batch_size: 32,
-      max_tokens_per_chunk: 750,
-    };
-  };
-
   const summarizeDocumentWithAgent = (rawText) => {
     const text = (rawText || '').trim().replace(/\s+/g, ' ');
     if (!text) return '';
@@ -209,15 +162,20 @@ function ChatInterface() {
     });
   };
 
-  const analyzeDocumentForContextSettings = (text, extension = '') => {
-    const tuned = autoTuneEmbeddingSettings(text, extension);
+  const analyzeDocumentForContextSettings = async (text, extension = '') => {
+    const response = await axios.post(KNOWLEDGE_EMBEDDING_RECOMMEND_URL, {
+      content: text || '',
+      extension,
+      language_hint: docForm.language || 'tr',
+    });
+    const data = response.data || {};
     setPendingRecommendation({
       documentKey: selectedDocForContext,
-      settings: tuned,
-      reason: text
-        ? 'Agent, doküman içeriğini analiz ederek bu ayarları önerdi.'
-        : 'Agent, dosya türüne göre başlangıç ayarlarını optimize etti.',
+      settings: cloneEmbeddingSettings(data.settings || embeddingSettings),
+      reason: data.reason || 'Agent önerisi hazır.',
+      explanations: data.explanations || {},
     });
+    setIsRecommendationModalOpen(true);
   };
 
   const loadKnowledgeDocuments = async ({ suppressError = false } = {}) => {
@@ -233,11 +191,15 @@ function ChatInterface() {
           if (!next[doc.id]) {
             next[doc.id] = {
               title: doc.title,
-              settings: cloneEmbeddingSettings(DEFAULT_EMBEDDING_SETTINGS),
+              settings: cloneEmbeddingSettings(doc.embedding_settings || DEFAULT_EMBEDDING_SETTINGS),
               needsApproval: false,
             };
           } else {
-            next[doc.id] = { ...next[doc.id], title: doc.title };
+            next[doc.id] = {
+              ...next[doc.id],
+              title: doc.title,
+              settings: cloneEmbeddingSettings(doc.embedding_settings || next[doc.id].settings || DEFAULT_EMBEDDING_SETTINGS),
+            };
           }
         });
         if (!next.draft) {
@@ -282,15 +244,17 @@ function ChatInterface() {
         source_type: docForm.source_type || 'manual',
         source_ref: docForm.source_ref.trim() || null,
         language: docForm.language || 'tr',
+        embedding_settings: cloneEmbeddingSettings(embeddingSettings),
       };
       const response = await axios.post(KNOWLEDGE_DOCUMENTS_URL, payload);
       const created = response.data;
       setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+      const savedSettings = cloneEmbeddingSettings(created.embedding_settings || embeddingSettings);
       setDocEmbeddingProfiles((prev) => ({
         ...prev,
         [created.id]: {
           title: created.title,
-          settings: cloneEmbeddingSettings(embeddingSettings),
+          settings: savedSettings,
           needsApproval: false,
         },
       }));
@@ -328,7 +292,7 @@ function ChatInterface() {
     setKnowledgeSuccess('');
     setIsKnowledgeFileReading(true);
     try {
-      analyzeDocumentForContextSettings('', extension);
+      await analyzeDocumentForContextSettings('', extension);
       setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti. Onayına hazır.');
       if (extension === 'pdf') {
         const formData = new FormData();
@@ -339,15 +303,17 @@ function ChatInterface() {
         formData.append('version_tag', docForm.version_tag.trim());
         formData.append('language', docForm.language || 'tr');
         formData.append('source_ref', docForm.source_ref.trim());
+        formData.append('embedding_settings', JSON.stringify(cloneEmbeddingSettings(embeddingSettings)));
 
         const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
         const created = response.data;
         setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+        const savedSettings = cloneEmbeddingSettings(created.embedding_settings || embeddingSettings);
         setDocEmbeddingProfiles((prev) => ({
           ...prev,
           [created.id]: {
             title: created.title,
-            settings: cloneEmbeddingSettings(embeddingSettings),
+            settings: savedSettings,
             needsApproval: false,
           },
         }));
@@ -369,7 +335,7 @@ function ChatInterface() {
         setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
         return;
       }
-      analyzeDocumentForContextSettings(normalized, extension);
+      await analyzeDocumentForContextSettings(normalized, extension);
       setAutoTunedLabel('Agent, doküman içeriğine göre embedding ayarlarını optimize etti. Onayına hazır.');
       const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
       setDocForm((prev) => ({
@@ -1202,6 +1168,7 @@ function ChatInterface() {
                         onClick={() => {
                           updateEmbeddingSettings(cloneEmbeddingSettings(pendingRecommendation.settings));
                           setPendingRecommendation(null);
+                          setIsRecommendationModalOpen(false);
                           setAutoTunedLabel('Öneri onaylandı. Dilersen manuel güncelleyebilirsin.');
                         }}
                       >
@@ -1212,6 +1179,7 @@ function ChatInterface() {
                         className="btn-ghost rounded-xl px-3 py-1.5 text-xs"
                         onClick={() => {
                           setPendingRecommendation(null);
+                          setIsRecommendationModalOpen(false);
                           setAutoTunedLabel('Öneri reddedildi. Manuel ayarlar aktif.');
                         }}
                       >
@@ -1441,6 +1409,46 @@ function ChatInterface() {
               </div>
             </form>
           </footer>
+        )}
+
+        {isRecommendationModalOpen && pendingRecommendation?.documentKey === selectedDocForContext && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+            <div className="surface-card w-full max-w-2xl rounded-2xl p-4">
+              <h3 className="text-base font-semibold">Embedding Optimizasyon Özeti</h3>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">{pendingRecommendation.reason}</p>
+              <div className="mt-3 max-h-[48vh] overflow-y-auto rounded-xl border border-[rgba(122,146,182,0.24)] p-3">
+                <ul className="space-y-2 text-xs">
+                  {Object.entries(pendingRecommendation.explanations || {}).map(([key, value]) => (
+                    <li key={key}>
+                      <span className="font-semibold text-[var(--accent-2)]">{key}:</span>{' '}
+                      <span className="text-[var(--text-muted)]">{value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn-ghost rounded-xl px-3 py-1.5 text-xs"
+                  onClick={() => setIsRecommendationModalOpen(false)}
+                >
+                  Kapat
+                </button>
+                <button
+                  type="button"
+                  className="btn-accent rounded-xl px-3 py-1.5 text-xs"
+                  onClick={() => {
+                    updateEmbeddingSettings(cloneEmbeddingSettings(pendingRecommendation.settings));
+                    setPendingRecommendation(null);
+                    setIsRecommendationModalOpen(false);
+                    setAutoTunedLabel('Öneri onaylandı. Dilersen manuel güncelleyebilirsin.');
+                  }}
+                >
+                  Bu Ayarları Uygula
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>
