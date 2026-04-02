@@ -4,6 +4,11 @@ import { auth } from '@/auth';
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const session = await auth();
-  redirect(session?.user?.id ? '/dashboard' : '/login');
+  try {
+    const session = await auth();
+    redirect(session?.user?.id ? '/dashboard' : '/login');
+  } catch (error) {
+    console.error('[home] auth lookup failed, falling back to /login', error);
+    redirect('/login');
+  }
 }
