@@ -41,6 +41,12 @@ services:
         published: "${BACKEND_HOST_PORT:-0}"
         host_ip: 127.0.0.1
         protocol: tcp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -50,6 +56,9 @@ services:
     environment:
       API_UPSTREAM: ${API_UPSTREAM:-backend:8000}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
