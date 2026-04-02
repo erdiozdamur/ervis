@@ -9,6 +9,10 @@ import { prisma } from '@/db/client';
 import { requireUser } from '@/server/auth/session';
 import { canAccessTeam } from '@/server/auth/access';
 
+type TeamGraph = Awaited<ReturnType<typeof getTeamGraph>>;
+type TeamEmployee = TeamGraph['employees'][number];
+type TeamEdge = TeamGraph['edges'][number];
+
 export default async function TeamPage({ params }: { params: { teamId: string } }) {
   const user = await requireUser();
   const access = await canAccessTeam(user.id, params.teamId);
@@ -19,14 +23,14 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
 
   const logs = await prisma.auditLog.findMany({ where: { organizationId: team.organizationId }, orderBy: { createdAt: 'desc' }, take: 20 });
 
-  const nodes: Node[] = employees.map((employee) => ({
+  const nodes: Node[] = employees.map((employee: TeamEmployee) => ({
     id: employee.id,
     type: 'employee',
     position: { x: employee.positionX, y: employee.positionY },
     data: { name: employee.name, description: employee.description, status: employee.status, tags: employee.tags, instructions: employee.instructions, attributes: employee.attributes, title: employee.title, specialization: employee.specialization, modelPreference: employee.modelPreference, active: employee.active },
   }));
 
-  const flowEdges: Edge[] = edges.map((edge) => ({
+  const flowEdges: Edge[] = edges.map((edge: TeamEdge) => ({
     id: edge.id,
     source: edge.sourceEmployeeId,
     target: edge.targetEmployeeId,
