@@ -70,6 +70,31 @@ const clampText = (value, limit = MESSAGE_RENDER_CHAR_LIMIT) => {
   return `${text.slice(0, limit).trimEnd()}…`;
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const requestWithRetry = async (requestFn, options = {}) => {
+  const {
+    retries = 2,
+    delayMs = 350,
+    retryStatuses = [502, 503, 504],
+  } = options;
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      const shouldRetry = !status || retryStatuses.includes(status);
+      if (!shouldRetry || attempt >= retries) {
+        throw error;
+      }
+      await wait(delayMs * (attempt + 1));
+    }
+  }
+  throw lastError;
+};
+
 const isDefaultConversationTitle = (title) => {
   const normalized = (title || '').trim().toLowerCase();
   return !normalized || normalized === 'yeni oturum' || normalized === 'new session' || normalized === 'new chat';
@@ -163,11 +188,15 @@ function ChatInterface() {
   };
 
   const analyzeDocumentForContextSettings = async (text, extension = '') => {
-    const response = await axios.post(KNOWLEDGE_EMBEDDING_RECOMMEND_URL, {
-      content: text || '',
-      extension,
-      language_hint: docForm.language || 'tr',
-    });
+    const response = await requestWithRetry(
+      () =>
+        axios.post(KNOWLEDGE_EMBEDDING_RECOMMEND_URL, {
+          content: text || '',
+          extension,
+          language_hint: docForm.language || 'tr',
+        }),
+      { retries: 1, delayMs: 250 },
+    );
     const data = response.data || {};
     setPendingRecommendation({
       documentKey: selectedDocForContext,
@@ -292,8 +321,12 @@ function ChatInterface() {
     setKnowledgeSuccess('');
     setIsKnowledgeFileReading(true);
     try {
-      await analyzeDocumentForContextSettings('', extension);
-      setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti. Onayına hazır.');
+      try {
+        await analyzeDocumentForContextSettings('', extension);
+        setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti. Onayına hazır.');
+      } catch {
+        setAutoTunedLabel('Embedding önerisi alınamadı; varsayılan ayarlarla devam ediliyor.');
+      }
       const formData = new FormData();
       formData.append('file', file);
       formData.append('title', docForm.title.trim() || file.name.replace(/\.[^/.]+$/, ''));
@@ -400,7 +433,10 @@ function ChatInterface() {
     const loadConversations = async () => {
       setIsHydratingConversations(true);
       try {
-        const response = await axios.get(`${CONVERSATIONS_URL}?limit=${CONVERSATION_FETCH_LIMIT}`);
+        const response = await requestWithRetry(
+          () => axios.get(`${CONVERSATIONS_URL}?limit=${CONVERSATION_FETCH_LIMIT}`),
+          { retries: 2, delayMs: 350 },
+        );
         if (!active) return;
         const list = response.data || [];
         if (list.length > 0) {
