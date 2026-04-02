@@ -1,108 +1,61 @@
-# Ervis SaaS Foundation (Phase 1)
+# Ervis SaaS Builder (Current Phase)
 
-## Architecture overview
-This first pass implements a production-minded vertical slice for a multi-tenant SaaS app with:
-- Next.js App Router + TypeScript + Tailwind UI shell
-- Prisma + PostgreSQL schema (with pgvector extension enabled)
-- NextAuth/Auth.js foundation with Google provider placeholders
-- Multi-tenant ownership model (user owns organizations)
-- Organization and Team canvases powered by React Flow
-- Basic audit log pipeline for creation, edge linking, and node moves
-- Seed/bootstrap path using environment variables (no hardcoded credentials)
+## What now works
+- Full CRUD style flows for Organization, Team, Employee (create + update + archive).
+- Canvas-first creation for teams/employees plus properties inspector editing.
+- Context source management with inheritance visualization.
+- Capability registry + assignment at team and employee level.
+- Edge semantics with typed edges and editable metadata.
+- Expanded audit log events and in-panel filtering.
+- Tightened server-side ownership checks for org/team/employee/context/capability/edge APIs.
 
-Layering:
-- `app/`: routes, layouts, API handlers
-- `components/`: reusable UI and canvas components
-- `features/`: domain-level querying/audit logic
-- `lib/`: environment validation, logging, shared utilities
-- `server/`: auth guard + access policy helpers
-- `db/`: Prisma client singleton
-- `prisma/`: schema, migrations, seed script
+## CRUD flows
+- **Organization**: create from dashboard, edit/archive from org cards.
+- **Team**: create from organization canvas, edit/archive in properties panel.
+- **Employee**: create from team canvas, edit/archive in properties panel.
+- All mutation endpoints validate payloads with **Zod**.
 
-## Folder structure
-```
-frontend/
-  app/
-    (app)/dashboard
-    (app)/org/[organizationId]
-    (app)/team/[teamId]
-    (app)/settings
-    login
-    api/
-  components/
-    layout/
-    canvas/
-  features/
-    org/
-    team/
-    audit/
-  lib/
-  server/
-  db/
-  prisma/
-```
+## Context inheritance rules
+- `organization` context applies to teams and employees.
+- `team` context applies to employees on that team.
+- `employee` context is direct only.
+- Inspector labels context as:
+  - inherited from organization
+  - inherited from team
+  - direct to employee
 
-## Setup instructions
-1. Install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-2. Copy env template and fill in values:
-   ```bash
-   cp .env.example .env
-   ```
-3. Ensure PostgreSQL has `pgvector` extension support.
-4. Generate Prisma client + run migration + seed:
-   ```bash
-   npm run db:generate
-   npm run db:migrate
-   npm run db:seed
-   ```
-5. Start app:
-   ```bash
-   npm run dev
-   ```
+## Capability assignment rules
+- Capability registry is seeded (`web_search`, `summarize_text`, `classify_content`, `route_task`, `write_analysis`, `review_output`, `send_email`).
+- Team can define default capabilities.
+- Employee can define direct capabilities.
+- Effective employee capabilities = direct employee caps + optional team defaults (resolved via domain service).
 
-## Environment variables
-- `DATABASE_URL`: PostgreSQL connection
-- `NEXTAUTH_SECRET`: session signing secret
-- `NEXTAUTH_URL`: base app URL
-- `GOOGLE_CLIENT_ID`: Google OAuth client id
-- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
-- `ADMIN_EMAIL`: bootstrap admin user email for seed/upsert
+## Edge types
+Supported edge enum values for team and employee edges:
+- `HIERARCHY`
+- `HANDOFF`
+- `APPROVAL`
+- `FEEDBACK_LOOP`
+- `ESCALATION`
 
-## Implemented now
-- Core schema + initial migration for:
-  - User, Organization, Team, Employee, ContextSource, Capability,
-    TeamEdge, EmployeeEdge, AuditLog (+ NextAuth support tables)
-- Multi-tenant access checks (user can only access owned org/team data)
-- Auth foundation with Google provider placeholders and custom login page
-- Admin bootstrap seed strategy via `ADMIN_EMAIL`
-- Pages:
-  - `/login`
-  - `/dashboard`
-  - `/org/[organizationId]`
-  - `/team/[teamId]`
-  - `/settings` (admin-only placeholder)
-- Reusable UI components:
-  - app sidebar, top bar, organization card, team/employee nodes,
-    properties panel, activity log panel
-- Basic canvas interactions:
-  - render nodes/edges from DB
-  - drag node and persist position
-  - connect nodes to create edge and persist
-- Minimal audit logging for:
-  - organization/team/employee created
-  - edge created
-  - node moved
-- Placeholder interfaces for future agent runtime:
-  - model provider, embedding provider, tool execution, orchestration engine
+Each edge supports label, description, condition note and can be edited/deleted.
 
-## Planned next (not yet implemented)
-- Full orchestration runtime and worker queueing
-- Context inheritance evaluator and runtime context resolution
-- Vector similarity queries and embedding ingestion pipeline
-- Fine-grained agent capability policy UI and enforcement hooks
-- Rich CRUD interactions in canvas (inline creation forms, deletion, editing)
-- Deeper admin console (system settings + user management)
+## Access control rules
+- Users can only access organizations they own.
+- Team/employee/context/edge/capability access is validated server-side through ownership traversal.
+- Admin-only settings page remains protected.
+
+## Seed data included
+- 1 organization
+- Multiple teams
+- Hierarchical team edges
+- Multiple employees
+- Employee workflow edges
+- Context inheritance examples (org/team/employee)
+- Capability assignments (team defaults + employee direct)
+
+## Still unimplemented
+- Runtime OpenAI execution/orchestration.
+- Full document embedding/vector ingestion pipeline.
+- Rich modal/sheet design system (current UI is pragmatic inline forms).
+- Full automated test coverage across all APIs.

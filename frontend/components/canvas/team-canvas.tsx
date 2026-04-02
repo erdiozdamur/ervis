@@ -1,50 +1,62 @@
 'use client';
 
-import { useState } from 'react';
-import ReactFlow, { addEdge, Background, Connection, Controls, Edge, MiniMap, Node } from 'reactflow';
+import { useMemo, useState } from 'react';
+import ReactFlow, { addEdge, Background, Connection, Controls, Edge, MarkerType, MiniMap, Node } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { EdgeType } from '@prisma/client';
 import { EmployeeNode } from '@/components/canvas/employee-node';
 import { PropertiesPanel } from '@/components/properties-panel';
+import { Button } from '@/components/ui/button';
 
 const nodeTypes = {
-  employee: ({ data }: { data: { name: string; title?: string } }) => <EmployeeNode name={data.name} title={data.title} />,
+  employee: ({ data, selected }: { data: { name: string; title?: string }; selected: boolean }) => <EmployeeNode name={data.name} title={data.title} selected={selected} />,
 };
 
-export function TeamCanvas({ initialNodes, initialEdges, teamId }: { initialNodes: Node[]; initialEdges: Edge[]; teamId: string }) {
+export function TeamCanvas({ initialNodes, initialEdges, teamId, organizationId }: { initialNodes: Node[]; initialEdges: Edge[]; teamId: string; organizationId: string }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
-  const [selected, setSelected] = useState<Record<string, unknown> | undefined>();
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [search, setSearch] = useState('');
+
+  const visibleNodes = useMemo(() => nodes.filter((n) => String((n.data as { name?: string }).name ?? '').toLowerCase().includes(search.toLowerCase())), [nodes, search]);
 
   const onConnect = async (connection: Connection) => {
-    setEdges((eds) => addEdge(connection, eds));
     if (!connection.source || !connection.target) return;
-    await fetch('/api/edges', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'employee', teamId, sourceId: connection.source, targetId: connection.target }),
-    });
+    setEdges((eds) => addEdge({ ...connection, markerEnd: { type: MarkerType.ArrowClosed }, data: { edgeType: EdgeType.HANDOFF } }, eds));
+    await fetch('/api/edges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'employee', teamId, sourceId: connection.source, targetId: connection.target, edgeType: 'HANDOFF' }) });
   };
 
   const onNodeDragStop = async (_: unknown, node: Node) => {
     setNodes((nds) => nds.map((n) => (n.id === node.id ? node : n)));
-    await fetch('/api/employees', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId: node.id, positionX: node.position.x, positionY: node.position.y }),
-    });
+    await fetch('/api/employees', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId: node.id, positionX: node.position.x, positionY: node.position.y }) });
   };
+
+  const selectedEntity = selectedNode
+    ? ({ kind: 'employee', id: selectedNode.id, teamId, organizationId, ...(selectedNode.data as object) } as never)
+    : undefined;
+
+  const selectedEdges = selectedNode ? edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id).map((e) => ({ id: e.id, label: e.label as string | null, edgeType: ((e.data as { edgeType?: EdgeType } | undefined)?.edgeType ?? EdgeType.HANDOFF), description: '', conditionNote: '' })) : [];
 
   return (
     <div className="flex h-[70vh] overflow-hidden rounded border">
-      <div className="flex-1">
+      <div className="relative flex-1">
+        <div className="absolute left-2 top-2 z-10 flex gap-2">
+          <input className="rounded border bg-white px-2 py-1 text-xs" placeholder="Search employees" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Button type="button" onClick={async () => {
+            const name = window.prompt('Employee name');
+            if (!name) return;
+            await fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, teamId, name }) });
+            window.location.reload();
+          }}>+ Employee</Button>
+        </div>
         <ReactFlow
-          nodes={nodes}
+          nodes={visibleNodes}
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={() => {}}
           onEdgesChange={() => {}}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelected(node.data as Record<string, unknown>)}
+          onNodeClick={(_, node) => setSelectedNode(node)}
           onNodeDragStop={onNodeDragStop}
           fitView
         >
@@ -53,7 +65,7 @@ export function TeamCanvas({ initialNodes, initialEdges, teamId }: { initialNode
           <Background />
         </ReactFlow>
       </div>
-      <PropertiesPanel data={selected} />
+      <PropertiesPanel entity={selectedEntity} edges={selectedEdges} refresh={() => window.location.reload()} />
     </div>
   );
 }

@@ -15,20 +15,23 @@ export default async function OrganizationPage({ params }: { params: { organizat
   const access = await canAccessOrganization(user.id, params.organizationId);
   if (!access) notFound();
 
-  const { teams, edges } = await getOrganizationGraph(params.organizationId);
+  const { organization, teams, edges } = await getOrganizationGraph(params.organizationId);
+  if (!organization) notFound();
   const logs = await prisma.auditLog.findMany({ where: { organizationId: params.organizationId }, orderBy: { createdAt: 'desc' }, take: 20 });
 
   const nodes: Node[] = teams.map((team) => ({
     id: team.id,
     type: 'team',
     position: { x: team.positionX, y: team.positionY },
-    data: { name: team.name, teamId: team.id },
+    data: { name: team.name, description: team.description, status: team.status, tags: team.tags, instructions: team.instructions, attributes: team.attributes, rolePurpose: team.rolePurpose },
   }));
 
   const flowEdges: Edge[] = edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceTeamId,
     target: edge.targetTeamId,
+    label: edge.label ?? edge.edgeType,
+    data: { edgeType: edge.edgeType },
   }));
 
   return (

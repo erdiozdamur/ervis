@@ -7,17 +7,17 @@ export async function GET(req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const orgId = req.nextUrl.searchParams.get('organizationId');
+  const subjectType = req.nextUrl.searchParams.get('subjectType');
+  const action = req.nextUrl.searchParams.get('action');
+
   const logs = await prisma.auditLog.findMany({
-    where: orgId
-      ? {
-          organizationId: orgId,
-          organization: { ownerId: session.user.id },
-        }
-      : {
-          actorId: session.user.id,
-        },
+    where: {
+      ...(orgId ? { organizationId: orgId, organization: { ownerId: session.user.id } } : { actorId: session.user.id }),
+      ...(subjectType ? { subjectType } : {}),
+      ...(action ? { action: action as never } : {}),
+    },
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: 100,
   });
 
   return NextResponse.json(logs);

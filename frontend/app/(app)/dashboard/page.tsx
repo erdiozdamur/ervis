@@ -15,7 +15,7 @@ export default async function DashboardPage() {
         <CreateOrganizationForm />
         <h2 className="mb-4 text-xl font-semibold">Your organizations</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {organizations.map((org) => (
+          {organizations.length === 0 ? <p className="text-sm text-muted-foreground">No organizations yet. Create your first one above.</p> : organizations.map((org) => (
             <OrganizationCard key={org.id} org={org} />
           ))}
         </div>

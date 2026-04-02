@@ -23,13 +23,15 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
     id: employee.id,
     type: 'employee',
     position: { x: employee.positionX, y: employee.positionY },
-    data: { name: employee.name, title: employee.title, employeeId: employee.id },
+    data: { name: employee.name, description: employee.description, status: employee.status, tags: employee.tags, instructions: employee.instructions, attributes: employee.attributes, title: employee.title, specialization: employee.specialization, modelPreference: employee.modelPreference, active: employee.active },
   }));
 
   const flowEdges: Edge[] = edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceEmployeeId,
     target: edge.targetEmployeeId,
+    label: edge.label ?? edge.edgeType,
+    data: { edgeType: edge.edgeType },
   }));
 
   return (
@@ -37,7 +39,7 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
       <TopBar title={`Team Canvas · ${team.name}`} />
       <div className="space-y-3 p-4">
         <CreateEmployeeForm organizationId={team.organizationId} teamId={params.teamId} />
-        <TeamCanvas initialNodes={nodes} initialEdges={flowEdges} teamId={params.teamId} />
+        <TeamCanvas initialNodes={nodes} initialEdges={flowEdges} teamId={params.teamId} organizationId={team.organizationId} />
         <ActivityLogPanel logs={logs} />
       </div>
     </main>
