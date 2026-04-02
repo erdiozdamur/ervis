@@ -34,6 +34,29 @@ const UI_MESSAGE_LIMIT = 60;
 const INPUT_MAX_CHARS = 2000;
 const MESSAGE_RENDER_CHAR_LIMIT = 4000;
 const CHAT_ATTACHMENT_MAX_COUNT = 6;
+const DEFAULT_EMBEDDING_SETTINGS = {
+  model: 'text-embedding-3-large',
+  chunk_size: 1000,
+  chunk_overlap: 150,
+  min_chunk_size: 250,
+  max_chunk_size: 1800,
+  split_strategy: 'recursive',
+  separators: '\\n\\n,\\n,. , ',
+  preserve_paragraphs: true,
+  normalize_whitespace: true,
+  lowercase: false,
+  remove_urls: false,
+  remove_tables: false,
+  language_hint: 'tr',
+  top_k_index: 8,
+  score_threshold: 0.2,
+  re_rank_enabled: true,
+  re_rank_top_n: 24,
+  batch_size: 32,
+  max_tokens_per_chunk: 800,
+};
+
+const cloneEmbeddingSettings = (settings = DEFAULT_EMBEDDING_SETTINGS) => ({ ...settings });
 
 const trimMessages = (items, limit = UI_MESSAGE_LIMIT) => {
   if (items.length <= limit) return items;
@@ -72,28 +95,11 @@ function ChatInterface() {
   const [knowledgeError, setKnowledgeError] = useState('');
   const [knowledgeSuccess, setKnowledgeSuccess] = useState('');
   const [hasKnowledgeLoadAttempted, setHasKnowledgeLoadAttempted] = useState(false);
-  const [embeddingSettings, setEmbeddingSettings] = useState({
-    model: 'text-embedding-3-large',
-    chunk_size: 1000,
-    chunk_overlap: 150,
-    min_chunk_size: 250,
-    max_chunk_size: 1800,
-    split_strategy: 'recursive',
-    separators: '\\n\\n,\\n,. , ',
-    preserve_paragraphs: true,
-    normalize_whitespace: true,
-    lowercase: false,
-    remove_urls: false,
-    remove_tables: false,
-    language_hint: 'tr',
-    top_k_index: 8,
-    score_threshold: 0.2,
-    re_rank_enabled: true,
-    re_rank_top_n: 24,
-    batch_size: 32,
-    max_tokens_per_chunk: 800,
-  });
+  const [embeddingSettings, setEmbeddingSettings] = useState(() => cloneEmbeddingSettings());
   const [autoTunedLabel, setAutoTunedLabel] = useState('');
+  const [selectedDocForContext, setSelectedDocForContext] = useState('draft');
+  const [docEmbeddingProfiles, setDocEmbeddingProfiles] = useState({});
+  const [pendingRecommendation, setPendingRecommendation] = useState(null);
   const [summaryDrafts, setSummaryDrafts] = useState({});
   const [docForm, setDocForm] = useState({
     title: '',
@@ -185,12 +191,64 @@ function ChatInterface() {
     return `Agent özeti: ${preview}${text.length > 380 ? '…' : ''}`;
   };
 
+  const updateEmbeddingSettings = (updater) => {
+    setEmbeddingSettings((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      setDocEmbeddingProfiles((profiles) => {
+        const current = profiles[selectedDocForContext] || {};
+        return {
+          ...profiles,
+          [selectedDocForContext]: {
+            ...current,
+            settings: cloneEmbeddingSettings(next),
+            needsApproval: false,
+          },
+        };
+      });
+      return next;
+    });
+  };
+
+  const analyzeDocumentForContextSettings = (text, extension = '') => {
+    const tuned = autoTuneEmbeddingSettings(text, extension);
+    setPendingRecommendation({
+      documentKey: selectedDocForContext,
+      settings: tuned,
+      reason: text
+        ? 'Agent, doküman içeriğini analiz ederek bu ayarları önerdi.'
+        : 'Agent, dosya türüne göre başlangıç ayarlarını optimize etti.',
+    });
+  };
+
   const loadKnowledgeDocuments = async ({ suppressError = false } = {}) => {
     setIsKnowledgeLoading(true);
     if (!suppressError) setKnowledgeError('');
     try {
       const response = await axios.get(`${KNOWLEDGE_DOCUMENTS_URL}?limit=100`);
-      setKnowledgeDocs(response.data || []);
+      const docs = response.data || [];
+      setKnowledgeDocs(docs);
+      setDocEmbeddingProfiles((prev) => {
+        const next = { ...prev };
+        docs.forEach((doc) => {
+          if (!next[doc.id]) {
+            next[doc.id] = {
+              title: doc.title,
+              settings: cloneEmbeddingSettings(DEFAULT_EMBEDDING_SETTINGS),
+              needsApproval: false,
+            };
+          } else {
+            next[doc.id] = { ...next[doc.id], title: doc.title };
+          }
+        });
+        if (!next.draft) {
+          next.draft = {
+            title: 'Yeni doküman',
+            settings: cloneEmbeddingSettings(DEFAULT_EMBEDDING_SETTINGS),
+            needsApproval: false,
+          };
+        }
+        return next;
+      });
     } catch {
       if (!suppressError) {
         setKnowledgeError('Dokümanlar yüklenirken bir sorun oluştu.');
@@ -228,6 +286,14 @@ function ChatInterface() {
       const response = await axios.post(KNOWLEDGE_DOCUMENTS_URL, payload);
       const created = response.data;
       setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+      setDocEmbeddingProfiles((prev) => ({
+        ...prev,
+        [created.id]: {
+          title: created.title,
+          settings: cloneEmbeddingSettings(embeddingSettings),
+          needsApproval: false,
+        },
+      }));
       const generatedSummary = summarizeDocumentWithAgent(payload.content);
       setSummaryDrafts((prev) => ({ ...prev, [created.id]: generatedSummary }));
       setKnowledgeSuccess(`Doküman işlendi: ${created.chunk_count} parça indekslendi.`);
@@ -262,9 +328,8 @@ function ChatInterface() {
     setKnowledgeSuccess('');
     setIsKnowledgeFileReading(true);
     try {
-      const tuned = autoTuneEmbeddingSettings('', extension);
-      setEmbeddingSettings(tuned);
-      setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti.');
+      analyzeDocumentForContextSettings('', extension);
+      setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti. Onayına hazır.');
       if (extension === 'pdf') {
         const formData = new FormData();
         formData.append('file', file);
@@ -278,6 +343,15 @@ function ChatInterface() {
         const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
         const created = response.data;
         setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+        setDocEmbeddingProfiles((prev) => ({
+          ...prev,
+          [created.id]: {
+            title: created.title,
+            settings: cloneEmbeddingSettings(embeddingSettings),
+            needsApproval: false,
+          },
+        }));
+        setSelectedDocForContext(created.id);
         setKnowledgeSuccess(`PDF işlendi: ${created.chunk_count} parça indekslendi.`);
         setDocForm((prev) => ({
           ...prev,
@@ -295,9 +369,8 @@ function ChatInterface() {
         setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
         return;
       }
-      const tunedForContent = autoTuneEmbeddingSettings(normalized, extension);
-      setEmbeddingSettings(tunedForContent);
-      setAutoTunedLabel('Agent, doküman içeriğine göre embedding ayarlarını optimize etti.');
+      analyzeDocumentForContextSettings(normalized, extension);
+      setAutoTunedLabel('Agent, doküman içeriğine göre embedding ayarlarını optimize etti. Onayına hazır.');
       const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
       setDocForm((prev) => ({
         ...prev,
@@ -320,11 +393,40 @@ function ChatInterface() {
     try {
       await axios.delete(`${KNOWLEDGE_DOCUMENTS_URL}/${doc.id}`);
       setKnowledgeDocs((prev) => prev.filter((x) => x.id !== doc.id));
+      setDocEmbeddingProfiles((prev) => {
+        const next = { ...prev };
+        delete next[doc.id];
+        return next;
+      });
+      if (selectedDocForContext === doc.id) {
+        setSelectedDocForContext('draft');
+      }
       setKnowledgeSuccess('Doküman silindi.');
     } catch {
       setKnowledgeError('Doküman silinemedi.');
     }
   };
+
+  useEffect(() => {
+    setDocEmbeddingProfiles((prev) => {
+      if (prev.draft) return prev;
+      return {
+        ...prev,
+        draft: {
+          title: 'Yeni doküman',
+          settings: cloneEmbeddingSettings(DEFAULT_EMBEDDING_SETTINGS),
+          needsApproval: false,
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    const profile = docEmbeddingProfiles[selectedDocForContext];
+    if (profile?.settings) {
+      setEmbeddingSettings(cloneEmbeddingSettings(profile.settings));
+    }
+  }, [selectedDocForContext, docEmbeddingProfiles]);
 
   const promoteConversation = (conversationId, fallbackTitle = 'Yeni Oturum') => {
     if (!conversationId) return;
@@ -1065,15 +1167,68 @@ function ChatInterface() {
                   <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Bağlam Yönetimi</h3>
                   <span className="text-xs text-[var(--accent-2)]">{autoTunedLabel || 'Elle güncellenebilir'}</span>
                 </div>
+                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <label className="text-xs">Doküman seç
+                    <select
+                      value={selectedDocForContext}
+                      onChange={(e) => setSelectedDocForContext(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="draft">Yeni doküman (taslak)</option>
+                      {knowledgeDocs.map((doc) => (
+                        <option key={doc.id} value={doc.id}>{doc.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="btn-ghost cursor-pointer rounded-xl px-3 py-2 text-xs text-center">
+                    {isKnowledgeFileReading ? 'İnceleniyor...' : 'Doküman Yükle & İncele'}
+                    <input
+                      type="file"
+                      accept=".txt,.md,.markdown,.csv,.json,.log,.pdf,text/plain,text/markdown,text/csv,application/json,application/pdf"
+                      className="hidden"
+                      onChange={handleKnowledgeFileSelect}
+                      disabled={isKnowledgeFileReading || isKnowledgeSubmitting}
+                    />
+                  </label>
+                </div>
+                {pendingRecommendation?.documentKey === selectedDocForContext && (
+                  <div className="mb-3 rounded-xl border border-[rgba(107,212,255,0.35)] bg-[rgba(107,212,255,0.08)] p-3 text-xs">
+                    <p className="font-semibold text-[var(--accent-2)]">Agent Önerisi Hazır</p>
+                    <p className="mt-1 text-[var(--text-muted)]">{pendingRecommendation.reason}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-accent rounded-xl px-3 py-1.5 text-xs"
+                        onClick={() => {
+                          updateEmbeddingSettings(cloneEmbeddingSettings(pendingRecommendation.settings));
+                          setPendingRecommendation(null);
+                          setAutoTunedLabel('Öneri onaylandı. Dilersen manuel güncelleyebilirsin.');
+                        }}
+                      >
+                        Öneriyi Onayla
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost rounded-xl px-3 py-1.5 text-xs"
+                        onClick={() => {
+                          setPendingRecommendation(null);
+                          setAutoTunedLabel('Öneri reddedildi. Manuel ayarlar aktif.');
+                        }}
+                      >
+                        Reddet
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-xs">Embedding modeli
-                    <select value={embeddingSettings.model} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, model: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
+                    <select value={embeddingSettings.model} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, model: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
                       <option value="text-embedding-3-large">text-embedding-3-large</option>
                       <option value="text-embedding-3-small">text-embedding-3-small</option>
                     </select>
                   </label>
                   <label className="text-xs">Split strategy
-                    <select value={embeddingSettings.split_strategy} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, split_strategy: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
+                    <select value={embeddingSettings.split_strategy} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, split_strategy: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none">
                       <option value="recursive">recursive</option>
                       <option value="token">token</option>
                       <option value="sentence">sentence</option>
@@ -1081,18 +1236,18 @@ function ChatInterface() {
                   </label>
                   {['chunk_size', 'chunk_overlap', 'min_chunk_size', 'max_chunk_size', 'top_k_index', 're_rank_top_n', 'batch_size', 'max_tokens_per_chunk', 'score_threshold'].map((key) => (
                     <label key={key} className="text-xs">{key}
-                      <input value={embeddingSettings[key]} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, [key]: key === 'score_threshold' ? Number(e.target.value) : Number(e.target.value) }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                      <input value={embeddingSettings[key]} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, [key]: key === 'score_threshold' ? Number(e.target.value) : Number(e.target.value) }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
                     </label>
                   ))}
                   <label className="text-xs sm:col-span-2">Separators
-                    <input value={embeddingSettings.separators} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, separators: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                    <input value={embeddingSettings.separators} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, separators: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
                   </label>
                   <label className="text-xs">Language hint
-                    <input value={embeddingSettings.language_hint} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, language_hint: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
+                    <input value={embeddingSettings.language_hint} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, language_hint: e.target.value }))} className="mt-1 w-full rounded-xl border border-[rgba(122,146,182,0.24)] bg-transparent px-3 py-2 text-sm outline-none" />
                   </label>
                   {['preserve_paragraphs', 'normalize_whitespace', 'lowercase', 'remove_urls', 'remove_tables', 're_rank_enabled'].map((key) => (
                     <label key={key} className="flex items-center gap-2 text-xs">
-                      <input type="checkbox" checked={embeddingSettings[key]} onChange={(e) => setEmbeddingSettings((p) => ({ ...p, [key]: e.target.checked }))} />
+                      <input type="checkbox" checked={embeddingSettings[key]} onChange={(e) => updateEmbeddingSettings((p) => ({ ...p, [key]: e.target.checked }))} />
                       {key}
                     </label>
                   ))}
