@@ -9,6 +9,8 @@ import { prisma } from '@/db/client';
 import { requireUser } from '@/server/auth/session';
 import { canAccessTeam } from '@/server/auth/access';
 
+export const dynamic = 'force-dynamic';
+
 type TeamGraph = Awaited<ReturnType<typeof getTeamGraph>>;
 type TeamEmployee = TeamGraph['employees'][number];
 type TeamEdge = TeamGraph['edges'][number];
