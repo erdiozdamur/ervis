@@ -1,0 +1,7 @@
+# Keep placeholder branch versions during merges for reset scope
+api.py merge=ours
+models.py merge=ours
+docker-compose.yml merge=ours
+frontend/Dockerfile.frontend merge=ours
+frontend/index.html merge=ours
+frontend/nginx.conf merge=ours
