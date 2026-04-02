@@ -1,7 +1,7 @@
 server {
     listen 80;
     server_name er-di.info test.er-di.info www.er-di.info _;
-    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
     # Tolerate mixed-version clients/proxies by mapping old hashed asset
     # requests to the current stable bundle names.
