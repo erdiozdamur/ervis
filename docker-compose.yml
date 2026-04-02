@@ -2,9 +2,9 @@ services:
   db:
     image: ankane/pgvector:latest
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-ervis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace_with_production_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
     ports:
       - target: 5432
         published: "${POSTGRES_HOST_PORT:-0}"
@@ -26,13 +26,13 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       APP_ENV: ${APP_ENV:-production}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-ervis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace_with_production_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-env}
     depends_on:
       db:
         condition: service_healthy
@@ -40,8 +40,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
       interval: 10s
       timeout: 5s
-      retries: 18
-      start_period: 180s
+      retries: 30
+      start_period: 600s
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -58,7 +58,7 @@ services:
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
