@@ -31,7 +31,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-env}
     depends_on:
       db:
@@ -47,23 +46,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.frontend
-    environment:
-      API_UPSTREAM: ${API_UPSTREAM:-backend:8000}
-      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
-    depends_on:
-      backend:
-        condition: service_healthy
-    ports:
-      - target: 80
-        published: "${FRONTEND_HOST_PORT:-0}"
-        host_ip: 127.0.0.1
-        protocol: tcp
     restart: unless-stopped
 
 volumes:
