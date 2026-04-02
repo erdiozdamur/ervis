@@ -49,9 +49,6 @@ services:
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-}"
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - target: 3000
         published: "${FRONTEND_HOST_PORT:-0}"
