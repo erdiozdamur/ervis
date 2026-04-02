@@ -1,4 +1,4 @@
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { prisma } from '@/db/client';
 
 export async function createAuditLog(input: {
@@ -7,8 +7,10 @@ export async function createAuditLog(input: {
   action: AuditAction;
   subjectType: string;
   subjectId: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonValue;
 }) {
+  const emptyMetadata: Prisma.InputJsonObject = {};
+
   return prisma.auditLog.create({
     data: {
       actorId: input.actorId,
@@ -16,7 +18,7 @@ export async function createAuditLog(input: {
       action: input.action,
       subjectType: input.subjectType,
       subjectId: input.subjectId,
-      metadata: input.metadata ?? {},
+      metadata: input.metadata ?? emptyMetadata,
     },
   });
 }
