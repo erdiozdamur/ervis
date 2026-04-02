@@ -58,7 +58,7 @@ services:
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
