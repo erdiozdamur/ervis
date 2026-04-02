@@ -36,12 +36,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "print('ok')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -56,9 +50,6 @@ services:
     environment:
       API_UPSTREAM: ${API_UPSTREAM:-backend:8000}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
-    depends_on:
-      backend:
-        condition: service_healthy
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
