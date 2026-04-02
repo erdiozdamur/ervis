@@ -8,8 +8,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: 'database' },
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID ?? 'GOOGLE_CLIENT_ID',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? 'GOOGLE_CLIENT_SECRET',
+      clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
     }),
   ],
   callbacks: {
