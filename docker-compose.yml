@@ -40,8 +40,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
       interval: 10s
       timeout: 5s
-      retries: 18
-      start_period: 180s
+      retries: 30
+      start_period: 600s
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -58,7 +58,7 @@ services:
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     ports:
       - target: 80
         published: "${FRONTEND_HOST_PORT:-0}"
