@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
@@ -92,6 +93,7 @@ model Organization {
   context       String           @default("")
   teams         Team[]
   employees     Employee[]
+  teamEdges     TeamEdge[]
   contextSource ContextSource[]
   auditLogs     AuditLog[]
   owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -121,7 +123,7 @@ model Team {
   employees       Employee[]
   sourceEdges     TeamEdge[]       @relation("TeamEdgeSource")
   targetEdges     TeamEdge[]       @relation("TeamEdgeTarget")
-  contextSource   ContextSource[]
+  employeeEdges   EmployeeEdge[]
   capabilities    TeamCapability[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -155,7 +157,6 @@ model Employee {
   sourceEdges      EmployeeEdge[]       @relation("EmployeeEdgeSource")
   targetEdges      EmployeeEdge[]       @relation("EmployeeEdgeTarget")
   capabilities     EmployeeCapability[]
-  contextSource    ContextSource[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
