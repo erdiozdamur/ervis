@@ -32,8 +32,15 @@ from services.retrieval_agent import answer_query
 from services.tool_agent import execute_tool_for_user
 from services.cache_service import check_cache, save_to_cache, clear_user_cache, delete_stale_cache, check_dynamic_status
 from services.web_search_agent import search_the_web
+from services.knowledge_service import (
+    upsert_document_with_chunks,
+    retrieve_document_context,
+    recommend_embedding_settings,
+    normalize_embedding_settings,
+    delete_document,
+)
 from services.auth_service import verify_password, get_password_hash, create_access_token, decode_access_token
-from models import User, Base, ChatMessage, Conversation
+from models import User, Base, ChatMessage, Conversation, KnowledgeDocument
 
 # Database Setup
 def _build_database_url() -> str | URL:
@@ -134,8 +141,36 @@ def _init_database():
                     CREATE INDEX IF NOT EXISTS ix_memory_facts_user_status
                     ON memory_facts (user_id, fact_status);
                 """))
-                conn.execute(text("DROP TABLE IF EXISTS knowledge_chunks CASCADE;"))
-                conn.execute(text("DROP TABLE IF EXISTS knowledge_documents CASCADE;"))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS knowledge_documents (
+                        id UUID PRIMARY KEY,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        title VARCHAR NOT NULL,
+                        content VARCHAR NOT NULL,
+                        domain VARCHAR NULL,
+                        product VARCHAR NULL,
+                        version_tag VARCHAR NULL,
+                        source_type VARCHAR NULL,
+                        source_ref VARCHAR NULL,
+                        language VARCHAR NULL,
+                        chunk_count INTEGER NOT NULL DEFAULT 0,
+                        embedding_settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                """))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+                        id UUID PRIMARY KEY,
+                        document_id UUID NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        chunk_index INTEGER NOT NULL,
+                        content VARCHAR NOT NULL,
+                        embedding vector(1536) NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                """))
                 conn.execute(text("""
                     DO $$
                     BEGIN
@@ -404,6 +439,44 @@ class Token(BaseModel):
     token_type: str
     user_id: uuid.UUID
     username: str
+
+
+class KnowledgeEmbeddingRecommendRequest(BaseModel):
+    content: Optional[str] = ""
+    extension: Optional[str] = ""
+    language_hint: Optional[str] = "tr"
+
+
+class KnowledgeEmbeddingRecommendResponse(BaseModel):
+    settings: Dict[str, Any]
+    reason: str
+    explanations: Dict[str, str]
+
+
+class KnowledgeDocumentCreateRequest(BaseModel):
+    title: str
+    content: str
+    domain: Optional[str] = None
+    product: Optional[str] = None
+    version_tag: Optional[str] = None
+    source_type: Optional[str] = "manual"
+    source_ref: Optional[str] = None
+    language: Optional[str] = "tr"
+    embedding_settings: Optional[Dict[str, Any]] = None
+
+
+class KnowledgeDocumentResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    domain: Optional[str] = None
+    product: Optional[str] = None
+    version_tag: Optional[str] = None
+    source_type: Optional[str] = None
+    source_ref: Optional[str] = None
+    language: Optional[str] = None
+    chunk_count: int
+    embedding_settings: Dict[str, Any]
+    created_at: datetime
 
 
 
@@ -901,6 +974,157 @@ async def extract_chat_attachment(
         char_count=len(extracted[:12000]),
     )
 
+
+@app.post("/api/knowledge/embedding/recommend", response_model=KnowledgeEmbeddingRecommendResponse)
+async def recommend_knowledge_embedding_settings(
+    request: KnowledgeEmbeddingRecommendRequest,
+    current_user: User = Depends(get_current_user),
+):
+    tuned, reason, explanations = recommend_embedding_settings(
+        text=request.content or "",
+        extension=request.extension or "",
+        language_hint=request.language_hint or "tr",
+    )
+    return KnowledgeEmbeddingRecommendResponse(settings=tuned, reason=reason, explanations=explanations)
+
+
+@app.get("/api/knowledge/documents", response_model=List[KnowledgeDocumentResponse])
+async def list_knowledge_documents(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    safe_limit = max(1, min(limit, 200))
+    rows = db.query(KnowledgeDocument).filter(
+        KnowledgeDocument.user_id == current_user.id
+    ).order_by(KnowledgeDocument.created_at.desc()).limit(safe_limit).all()
+    return [
+        KnowledgeDocumentResponse(
+            id=row.id,
+            title=row.title,
+            domain=row.domain,
+            product=row.product,
+            version_tag=row.version_tag,
+            source_type=row.source_type,
+            source_ref=row.source_ref,
+            language=row.language,
+            chunk_count=row.chunk_count,
+            embedding_settings=normalize_embedding_settings(row.embedding_settings or {}),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+@app.post("/api/knowledge/documents", response_model=KnowledgeDocumentResponse)
+async def create_knowledge_document(
+    request: KnowledgeDocumentCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if len((request.title or "").strip()) < 3:
+        raise HTTPException(status_code=400, detail="Doküman başlığı en az 3 karakter olmalı.")
+    if len((request.content or "").strip()) < 40:
+        raise HTTPException(status_code=400, detail="Doküman içeriği en az 40 karakter olmalı.")
+
+    created = await upsert_document_with_chunks(
+        db_session=db,
+        user_id=current_user.id,
+        title=request.title.strip(),
+        content=request.content.strip(),
+        metadata={
+            "domain": request.domain,
+            "product": request.product,
+            "version_tag": request.version_tag,
+            "source_type": request.source_type,
+            "source_ref": request.source_ref,
+            "language": request.language or "tr",
+        },
+        embedding_settings=request.embedding_settings,
+    )
+    return KnowledgeDocumentResponse(
+        id=created.id,
+        title=created.title,
+        domain=created.domain,
+        product=created.product,
+        version_tag=created.version_tag,
+        source_type=created.source_type,
+        source_ref=created.source_ref,
+        language=created.language,
+        chunk_count=created.chunk_count,
+        embedding_settings=normalize_embedding_settings(created.embedding_settings or {}),
+        created_at=created.created_at,
+    )
+
+
+@app.post("/api/knowledge/documents/upload", response_model=KnowledgeDocumentResponse)
+async def upload_knowledge_document(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    domain: Optional[str] = Form(None),
+    product: Optional[str] = Form(None),
+    version_tag: Optional[str] = Form(None),
+    source_type: Optional[str] = Form("file"),
+    source_ref: Optional[str] = Form(None),
+    language: Optional[str] = Form("tr"),
+    embedding_settings: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    payload = await file.read()
+    extracted = _extract_text_from_uploaded_file(file.filename or "knowledge-file", payload)
+    if len(extracted.strip()) < 40:
+        raise HTTPException(status_code=400, detail="Dosyadan yeterli metin çıkarılamadı.")
+
+    parsed_settings = None
+    if embedding_settings:
+        import json
+        try:
+            parsed_settings = json.loads(embedding_settings)
+        except Exception:
+            parsed_settings = None
+
+    created = await upsert_document_with_chunks(
+        db_session=db,
+        user_id=current_user.id,
+        title=(title or file.filename or "Doküman").strip(),
+        content=extracted.strip(),
+        metadata={
+            "domain": domain,
+            "product": product,
+            "version_tag": version_tag,
+            "source_type": source_type or "file",
+            "source_ref": source_ref or file.filename,
+            "language": language or "tr",
+        },
+        embedding_settings=parsed_settings,
+    )
+    return KnowledgeDocumentResponse(
+        id=created.id,
+        title=created.title,
+        domain=created.domain,
+        product=created.product,
+        version_tag=created.version_tag,
+        source_type=created.source_type,
+        source_ref=created.source_ref,
+        language=created.language,
+        chunk_count=created.chunk_count,
+        embedding_settings=normalize_embedding_settings(created.embedding_settings or {}),
+        created_at=created.created_at,
+    )
+
+
+@app.delete("/api/knowledge/documents/{document_id}")
+async def remove_knowledge_document(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    removed = delete_document(db, current_user.id, document_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Doküman bulunamadı.")
+    return {"message": "Doküman silindi."}
+
 @app.post("/api/auth/register")
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if user exists
@@ -1071,7 +1295,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 loc = m.get("location", {}) or {}
                 city = loc.get("city", "Bilinmiyor")
                 meta_str = f"\n[SİSTEM BAĞLAMI]: Konum: {city}, Saat: {m.get('time')}, Gün: {m.get('day')}"
-            knowledge_result = {"context": "", "sources": []}
+            knowledge_context, knowledge_sources = await retrieve_document_context(
+                db_session=db,
+                user_id=user_id,
+                query=effective_message,
+            )
+            knowledge_result = {"context": knowledge_context, "sources": knowledge_sources}
 
             answer, final_model = await answer_query(
                 user_id,
@@ -1080,6 +1309,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks,
                 web_context=web_context,
                 metadata_context=meta_str,
                 knowledge_context=knowledge_result.get("context", ""),
+                knowledge_sources=knowledge_result.get("sources", []),
             )
             
             # 4. Save to cache (Mandatory Write Bypass inside save_to_cache)
