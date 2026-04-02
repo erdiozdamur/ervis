@@ -1,0 +1,6 @@
+api.py merge=ours
+models.py merge=ours
+docker-compose.yml merge=ours
+frontend/Dockerfile.frontend merge=ours
+frontend/nginx.conf merge=ours
+frontend/index.html merge=ours

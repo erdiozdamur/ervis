@@ -26,15 +26,6 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       APP_ENV: ${APP_ENV:-production}
-      POSTGRES_USER: ${POSTGRES_USER:-ervis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace_with_production_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
-      POSTGRES_HOST: db
-      POSTGRES_PORT: 5432
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-env}
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -46,6 +37,20 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - target: 80
+        published: "${FRONTEND_HOST_PORT:-0}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    depends_on:
+      backend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
