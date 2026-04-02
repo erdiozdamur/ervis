@@ -10,6 +10,8 @@ import { prisma } from '@/db/client';
 import { requireUser } from '@/server/auth/session';
 import { canAccessOrganization } from '@/server/auth/access';
 
+export const dynamic = 'force-dynamic';
+
 type OrganizationGraph = Awaited<ReturnType<typeof getOrganizationGraph>>;
 type GraphTeam = OrganizationGraph['teams'][number];
 type GraphEdge = OrganizationGraph['edges'][number];
