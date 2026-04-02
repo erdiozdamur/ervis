@@ -1,45 +1,36 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon-v20260330c.svg" />
-    <link rel="shortcut icon" href="/favicon-v20260330c.svg" />
-    <link rel="apple-touch-icon" href="/favicon-v20260330c.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
-    <title>Ervis</title>
+    <title>Ervis - Placeholder</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: radial-gradient(circle at top, #1a2746, #090b12 62%);
+        color: #eaf0ff;
+      }
+      .card {
+        width: min(92vw, 640px);
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(10,16,30,.62);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      }
+      h1 { margin: 0 0 10px; font-size: 28px; }
+      p { margin: 0; color: #b7c2de; line-height: 1.6; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script>
-      (function () {
-        var KEY = "__ervis_asset_retry__";
-        window.addEventListener(
-          "error",
-          function (event) {
-            var target = event && event.target;
-            if (!target) return;
-            var url = target.src || target.href || "";
-            if (!/\/assets\/.+\.(js|css)(\?.*)?$/.test(url)) return;
-            try {
-              if (sessionStorage.getItem(KEY) === "1") return;
-              sessionStorage.setItem(KEY, "1");
-              var next = new URL(window.location.href);
-              next.searchParams.set("v", String(Date.now()));
-              window.location.replace(next.toString());
-            } catch (_) {
-              // Ignore; normal browser error flow continues.
-            }
-          },
-          true
-        );
-      })();
-    </script>
-    <script type="module" src="/src/main.jsx"></script>
+    <section class="card">
+      <h1>Ervis yakında burada</h1>
+      <p>Ürün sıfırdan yeniden yapılandırılıyor. Şimdilik bu placeholder sayfası aktif.</p>
+    </section>
   </body>
 </html>

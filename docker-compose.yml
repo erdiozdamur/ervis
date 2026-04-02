@@ -31,7 +31,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ervis_core}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-env}
     depends_on:
       db:
@@ -55,7 +54,7 @@ services:
       dockerfile: Dockerfile.frontend
     environment:
       API_UPSTREAM: ${API_UPSTREAM:-backend:8000}
-      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50M}
+      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-20M}
     depends_on:
       backend:
         condition: service_healthy
