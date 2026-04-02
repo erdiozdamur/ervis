@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
+import { UserRole } from '@prisma/client';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/db/client';
 import { loginSchema } from '@/server/auth/credentials';
@@ -52,14 +53,23 @@ if (isGoogleConfigured) {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: 'database' },
+  session: { strategy: 'jwt' },
   providers,
   secret: authSecret,
   callbacks: {
-    session: async ({ session, user }) => {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      return token;
+    },
+    session: async ({ session, token }) => {
+      const tokenId = typeof token.id === 'string' ? token.id : undefined;
+      const tokenRole = token.role === UserRole.ADMIN || token.role === UserRole.USER ? token.role : UserRole.USER;
       if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
+        session.user.id = tokenId ?? '';
+        session.user.role = tokenRole;
       }
       return session;
     },
