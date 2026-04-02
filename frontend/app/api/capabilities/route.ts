@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/db/client';
 import { auth } from '@/auth';
@@ -12,10 +11,6 @@ const schema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('team'), teamId: z.string(), capabilityIds: z.array(z.string()) }),
 ]);
 
-type CapabilityAssignment = Prisma.EmployeeCapabilityGetPayload<{
-  select: { capabilityId: true };
-}>;
-
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -24,12 +19,12 @@ export async function GET(req: NextRequest) {
   const capabilities = await prisma.capability.findMany({ orderBy: { label: 'asc' } });
   if (teamId) {
     if (!(await canAccessTeam(session.user.id, teamId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const assigned: CapabilityAssignment[] = await prisma.teamCapability.findMany({ where: { teamId }, select: { capabilityId: true } });
+    const assigned = await prisma.teamCapability.findMany({ where: { teamId }, select: { capabilityId: true } });
     return NextResponse.json({ capabilities, assignedCapabilityIds: assigned.map((a) => a.capabilityId) });
   }
   if (!employeeId) return NextResponse.json({ capabilities });
   if (!(await canAccessEmployee(session.user.id, employeeId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const assigned: CapabilityAssignment[] = await prisma.employeeCapability.findMany({ where: { employeeId }, select: { capabilityId: true } });
+  const assigned = await prisma.employeeCapability.findMany({ where: { employeeId }, select: { capabilityId: true } });
   const effective = await resolveEffectiveCapabilities(employeeId, true);
   return NextResponse.json({ capabilities, assignedCapabilityIds: assigned.map((a) => a.capabilityId), effective });
 }
