@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 function isPresent(value) {
   return Boolean(value && value.trim().length > 0);
@@ -71,6 +72,15 @@ if (!resolvedNextAuthSecret) missingRequired.push('AUTH_SECRET or NEXTAUTH_SECRE
 if (missingRequired.length > 0) {
   console.error(`[startup] Missing required environment variable(s): ${missingRequired.join(', ')}`);
   process.exit(1);
+}
+
+console.log('[startup] running Prisma migrations: npx prisma migrate deploy');
+const migrateResult = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
+  stdio: 'inherit',
+  env: process.env,
+});
+if (migrateResult.status !== 0) {
+  process.exit(migrateResult.status ?? 1);
 }
 
 const child = spawn('node_modules/.bin/next', ['start', '-H', '0.0.0.0', '-p', '3000'], {

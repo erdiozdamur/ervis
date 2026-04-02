@@ -52,14 +52,21 @@ if (isGoogleConfigured) {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: 'database' },
+  session: { strategy: 'jwt' },
   providers,
   secret: authSecret,
   callbacks: {
-    session: async ({ session, user }) => {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      return token;
+    },
+    session: async ({ session, token }) => {
       if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
+        session.user.id = String(token.id ?? '');
+        session.user.role = (token.role as typeof session.user.role) ?? 'MEMBER';
       }
       return session;
     },
