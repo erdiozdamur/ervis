@@ -1,20 +1,8 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-venv/
-.venv/
-api_server.log
-vite.log
-
-# Environment
+*.pyc
 .env
-.env.*
-!.env.*.example
-
-# Node
+.venv/
 node_modules/
-dist/
-
-# OS
-.DS_Store
+frontend/node_modules/
+frontend/.next/
+frontend/.env
