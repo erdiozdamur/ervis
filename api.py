@@ -4,6 +4,7 @@ import base64
 import uuid
 import traceback
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List
 from typing import Optional, Dict, Any
@@ -252,6 +253,28 @@ MAX_CONVERSATION_FETCH_LIMIT = _int_env(
 )
 
 def get_db():
+    max_wait_seconds = _int_env(
+        "DB_INIT_REQUEST_WAIT_SECONDS",
+        default=45,
+        min_value=1,
+        max_value=180,
+    )
+    waited = 0.0
+    while not _startup_init_done and waited < max_wait_seconds:
+        time.sleep(0.2)
+        waited += 0.2
+
+    if not _startup_init_done:
+        raise HTTPException(
+            status_code=503,
+            detail="Veritabanı başlatma işlemi henüz tamamlanmadı. Lütfen tekrar deneyin.",
+        )
+    if _startup_init_error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Veritabanı başlatma hatası: {_startup_init_error}",
+        )
+
     db = SessionLocal()
     try:
         yield db
