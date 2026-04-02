@@ -61,3 +61,12 @@ When test database is behind production schema:
    - `CONFIRM_SYNC=YES ./sync_test_db_with_prod.sh`
 
 > `sync_test_db_with_prod.sh` drops and recreates the `public` schema on **test** database before importing production schema.
+
+## 6) Frontend proxy upstream (important)
+
+`/api` requests from the frontend are proxied by Nginx to `API_UPSTREAM`.
+
+- In `docker-compose`, default is `backend:8000` (service DNS name).
+- In standalone frontend container deployments, set `API_UPSTREAM` explicitly (for example `127.0.0.1:8000` for sidecar/same-pod backend, or `api.example.com:443` behind TLS-terminating proxy).
+
+If `API_UPSTREAM` cannot be resolved by the container runtime DNS, Nginx returns `502` with errors such as `backend could not be resolved`.
