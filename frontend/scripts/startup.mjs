@@ -13,19 +13,7 @@ function getFirst(keys) {
 }
 
 function resolveDatabaseUrl() {
-  const direct = getFirst(['DATABASE_URL']);
-  if (direct) return direct;
-
-  const user = process.env.POSTGRES_USER;
-  const password = process.env.POSTGRES_PASSWORD;
-  const database = process.env.POSTGRES_DB;
-  const host = process.env.POSTGRES_HOST ?? 'postgres';
-  const port = process.env.POSTGRES_PORT ?? '5432';
-
-  if (isPresent(user) && isPresent(password) && isPresent(database)) {
-    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
-  }
-  return undefined;
+  return getFirst(['DATABASE_URL']);
 }
 
 const resolvedPort = process.env.PORT ?? '3000';
@@ -66,7 +54,7 @@ console.log(`[startup] optional env ADMIN_EMAIL: ${isPresent(process.env.ADMIN_E
 console.log(`[startup] optional google provider envs: ${hasGoogleProvider ? 'present' : 'missing (Google auth disabled)'}`);
 
 const missingRequired = [];
-if (!resolvedDatabaseUrl) missingRequired.push('DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB');
+if (!resolvedDatabaseUrl) missingRequired.push('DATABASE_URL');
 if (!resolvedNextAuthSecret) missingRequired.push('AUTH_SECRET or NEXTAUTH_SECRET or JWT_SECRET_KEY');
 
 if (missingRequired.length > 0) {
