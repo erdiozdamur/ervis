@@ -36,6 +36,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('ok')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
