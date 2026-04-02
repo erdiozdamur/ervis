@@ -325,8 +325,9 @@ function ChatInterface() {
         source_type: 'file',
         source_ref: file.name,
       }));
-    } catch {
-      setKnowledgeError('Dosya okunurken bir sorun oluştu.');
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      setKnowledgeError(typeof detail === 'string' ? detail : 'Dosya okunurken bir sorun oluştu.');
     } finally {
       setIsKnowledgeFileReading(false);
     }
