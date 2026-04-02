@@ -3,6 +3,7 @@ import io
 import base64
 import uuid
 import traceback
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import List
 from typing import Optional, Dict, Any
@@ -734,17 +735,31 @@ def _backfill_legacy_conversations():
 
 
 _startup_init_error: Optional[str] = None
+_startup_init_done: bool = False
+_startup_init_thread_started: bool = False
 
 
-@app.on_event("startup")
-def startup_initialize_database():
-    global _startup_init_error
+def _run_startup_initialize_database() -> None:
+    global _startup_init_error, _startup_init_done
     try:
         _init_database()
         _startup_init_error = None
     except Exception as exc:
         _startup_init_error = str(exc)
         print(f"❌ Startup database initialization failed: {_startup_init_error}")
+    finally:
+        _startup_init_done = True
+
+
+@app.on_event("startup")
+def startup_initialize_database():
+    """Start DB initialization asynchronously so liveness checks are not blocked."""
+    global _startup_init_thread_started
+    if _startup_init_thread_started:
+        return
+    _startup_init_thread_started = True
+    threading.Thread(target=_run_startup_initialize_database, daemon=True).start()
+
 
 @app.get("/healthz")
 def healthz():
@@ -754,7 +769,9 @@ def healthz():
 
 @app.get("/readyz")
 def readyz(db: Session = Depends(get_db)):
-    """Readiness probe that verifies database connectivity."""
+    """Readiness probe that verifies database initialization and DB connectivity."""
+    if not _startup_init_done:
+        raise HTTPException(status_code=503, detail="startup init is still running")
     if _startup_init_error:
         raise HTTPException(status_code=503, detail=f"startup init failed: {_startup_init_error}")
     db.execute(text("SELECT 1"))
