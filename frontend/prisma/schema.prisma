@@ -13,72 +13,118 @@ enum UserRole {
   ADMIN
 }
 
+enum EntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum ContextOwnerType {
   ORGANIZATION
   TEAM
   EMPLOYEE
 }
 
+enum ContextSourceType {
+  TEXT
+  DOCUMENT_REFERENCE
+  NOTE
+}
+
+enum ModelPreference {
+  GPT_4_1
+  GPT_4O
+  GPT_4O_MINI
+}
+
+enum EdgeType {
+  HIERARCHY
+  HANDOFF
+  APPROVAL
+  FEEDBACK_LOOP
+  ESCALATION
+}
+
 enum AuditAction {
   ORGANIZATION_CREATED
+  ORGANIZATION_UPDATED
   TEAM_CREATED
+  TEAM_UPDATED
   EMPLOYEE_CREATED
+  EMPLOYEE_UPDATED
   EDGE_CREATED
+  EDGE_UPDATED
+  EDGE_DELETED
+  CONTEXT_SOURCE_CREATED
+  CONTEXT_SOURCE_UPDATED
+  CONTEXT_SOURCE_DELETED
+  CAPABILITY_ASSIGNED
+  CAPABILITY_REMOVED
+  ENTITY_ARCHIVED
+  ENTITY_DELETED
   NODE_MOVED
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
+  id             String                @id @default(cuid())
+  email          String                @unique
   name           String?
   image          String?
-  role           UserRole        @default(USER)
+  role           UserRole              @default(USER)
   organizations  Organization[]
   accounts       Account[]
   sessions       Session[]
   auditLogs      AuditLog[]
   employeeCaps   EmployeeCapability[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  teamCaps       TeamCapability[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 }
 
 model Organization {
-  id            String          @id @default(cuid())
+  id            String           @id @default(cuid())
   ownerId       String
   name          String
-  attributes    Json            @default("{}")
-  instructions  String          @default("")
-  context       String          @default("")
+  description   String           @default("")
+  status        EntityStatus     @default(ACTIVE)
+  tags          String[]         @default([])
+  attributes    Json             @default("{}")
+  instructions  String           @default("")
+  context       String           @default("")
   teams         Team[]
   employees     Employee[]
   contextSource ContextSource[]
   auditLogs     AuditLog[]
-  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([ownerId])
 }
 
 model Team {
-  id              String       @id @default(cuid())
+  id              String           @id @default(cuid())
   organizationId  String
   parentTeamId    String?
   name            String
-  attributes      Json         @default("{}")
-  instructions    String       @default("")
-  context         String       @default("")
-  positionX       Float        @default(0)
-  positionY       Float        @default(0)
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parentTeam      Team?        @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
-  childTeams      Team[]       @relation("TeamHierarchy")
+  description     String           @default("")
+  status          EntityStatus     @default(ACTIVE)
+  tags            String[]         @default([])
+  rolePurpose     String           @default("")
+  attributes      Json             @default("{}")
+  instructions    String           @default("")
+  context         String           @default("")
+  positionX       Float            @default(0)
+  positionY       Float            @default(0)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentTeam      Team?            @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
+  childTeams      Team[]           @relation("TeamHierarchy")
   employees       Employee[]
-  sourceEdges     TeamEdge[]   @relation("TeamEdgeSource")
-  targetEdges     TeamEdge[]   @relation("TeamEdgeTarget")
+  sourceEdges     TeamEdge[]       @relation("TeamEdgeSource")
+  targetEdges     TeamEdge[]       @relation("TeamEdgeTarget")
   contextSource   ContextSource[]
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  capabilities    TeamCapability[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([organizationId])
   @@index([parentTeamId])
@@ -90,7 +136,13 @@ model Employee {
   teamId           String
   managerId        String?
   name             String
+  description      String               @default("")
+  status           EntityStatus         @default(ACTIVE)
+  tags             String[]             @default([])
   title            String?
+  specialization   String               @default("")
+  modelPreference  ModelPreference      @default(GPT_4O_MINI)
+  active           Boolean              @default(true)
   attributes       Json                 @default("{}")
   instructions     String               @default("")
   context          String               @default("")
@@ -117,6 +169,7 @@ model Capability {
   label        String
   description  String?
   employees    EmployeeCapability[]
+  teams        TeamCapability[]
   createdAt    DateTime             @default(now())
 }
 
@@ -133,12 +186,28 @@ model EmployeeCapability {
   @@unique([employeeId, capabilityId])
 }
 
+model TeamCapability {
+  id            String      @id @default(cuid())
+  teamId         String
+  capabilityId   String
+  grantedById    String
+  team           Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  capability     Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  grantedBy      User       @relation(fields: [grantedById], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+
+  @@unique([teamId, capabilityId])
+}
+
 model TeamEdge {
   id              String       @id @default(cuid())
   organizationId  String
   sourceTeamId    String
   targetTeamId    String
+  edgeType        EdgeType     @default(HIERARCHY)
   label           String?
+  description     String       @default("")
+  conditionNote   String       @default("")
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sourceTeam      Team         @relation("TeamEdgeSource", fields: [sourceTeamId], references: [id], onDelete: Cascade)
   targetTeam      Team         @relation("TeamEdgeTarget", fields: [targetTeamId], references: [id], onDelete: Cascade)
@@ -148,45 +217,50 @@ model TeamEdge {
 }
 
 model EmployeeEdge {
-  id              String       @id @default(cuid())
-  teamId          String
+  id               String       @id @default(cuid())
+  teamId           String
   sourceEmployeeId String
   targetEmployeeId String
-  label           String?
-  team            Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  sourceEmployee  Employee     @relation("EmployeeEdgeSource", fields: [sourceEmployeeId], references: [id], onDelete: Cascade)
-  targetEmployee  Employee     @relation("EmployeeEdgeTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
-  createdAt       DateTime     @default(now())
+  edgeType         EdgeType     @default(HANDOFF)
+  label            String?
+  description      String       @default("")
+  conditionNote    String       @default("")
+  team             Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sourceEmployee   Employee     @relation("EmployeeEdgeSource", fields: [sourceEmployeeId], references: [id], onDelete: Cascade)
+  targetEmployee   Employee     @relation("EmployeeEdgeTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
+  createdAt        DateTime     @default(now())
 
   @@index([teamId])
 }
 
 model ContextSource {
-  id                String           @id @default(cuid())
+  id                String            @id @default(cuid())
   organizationId    String
   ownerType         ContextOwnerType
   ownerId           String
-  label             String
+  title             String
+  type              ContextSourceType @default(TEXT)
   content           String
   embedding         Unsupported("vector")?
-  metadata          Json             @default("{}")
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt         DateTime         @default(now())
+  metadata          Json              @default("{}")
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@index([organizationId, ownerType])
 }
 
 model AuditLog {
-  id              String       @id @default(cuid())
+  id              String        @id @default(cuid())
   organizationId  String?
   actorId         String
   action          AuditAction
   subjectType     String
   subjectId       String
-  metadata        Json         @default("{}")
-  actor           User         @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  metadata        Json          @default("{}")
+  actor           User          @relation(fields: [actorId], references: [id], onDelete: Cascade)
   organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt       DateTime     @default(now())
+  createdAt       DateTime      @default(now())
 
   @@index([organizationId, createdAt])
 }
