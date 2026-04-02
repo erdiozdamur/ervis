@@ -294,58 +294,37 @@ function ChatInterface() {
     try {
       await analyzeDocumentForContextSettings('', extension);
       setAutoTunedLabel('Agent, dosya türüne göre embedding ayarlarını optimize etti. Onayına hazır.');
-      if (extension === 'pdf') {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('title', docForm.title.trim() || file.name.replace(/\.[^/.]+$/, ''));
-        formData.append('domain', docForm.domain || 'product');
-        formData.append('product', docForm.product.trim());
-        formData.append('version_tag', docForm.version_tag.trim());
-        formData.append('language', docForm.language || 'tr');
-        formData.append('source_ref', docForm.source_ref.trim());
-        formData.append('embedding_settings', JSON.stringify(cloneEmbeddingSettings(embeddingSettings)));
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', docForm.title.trim() || file.name.replace(/\.[^/.]+$/, ''));
+      formData.append('domain', docForm.domain || 'product');
+      formData.append('product', docForm.product.trim());
+      formData.append('version_tag', docForm.version_tag.trim());
+      formData.append('language', docForm.language || 'tr');
+      formData.append('source_ref', docForm.source_ref.trim());
+      formData.append('embedding_settings', JSON.stringify(cloneEmbeddingSettings(embeddingSettings)));
 
-        const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
-        const created = response.data;
-        setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
-        const savedSettings = cloneEmbeddingSettings(created.embedding_settings || embeddingSettings);
-        setDocEmbeddingProfiles((prev) => ({
-          ...prev,
-          [created.id]: {
-            title: created.title,
-            settings: savedSettings,
-            needsApproval: false,
-          },
-        }));
-        setSelectedDocForContext(created.id);
-        setKnowledgeSuccess(`PDF işlendi: ${created.chunk_count} parça indekslendi.`);
-        setDocForm((prev) => ({
-          ...prev,
-          title: '',
-          content: '',
-          source_type: 'file',
-          source_ref: file.name,
-        }));
-        return;
-      }
-
-      const text = await file.text();
-      const normalized = (text || '').trim();
-      if (normalized.length < 40) {
-        setKnowledgeError('Dosya içeriği indeksleme için en az 40 karakter olmalı.');
-        return;
-      }
-      await analyzeDocumentForContextSettings(normalized, extension);
-      setAutoTunedLabel('Agent, doküman içeriğine göre embedding ayarlarını optimize etti. Onayına hazır.');
-      const defaultTitle = file.name.replace(/\.[^/.]+$/, '');
+      const response = await axios.post(KNOWLEDGE_DOCUMENT_UPLOAD_URL, formData);
+      const created = response.data;
+      setKnowledgeDocs((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+      const savedSettings = cloneEmbeddingSettings(created.embedding_settings || embeddingSettings);
+      setDocEmbeddingProfiles((prev) => ({
+        ...prev,
+        [created.id]: {
+          title: created.title,
+          settings: savedSettings,
+          needsApproval: false,
+        },
+      }));
+      setSelectedDocForContext(created.id);
+      setKnowledgeSuccess(`Doküman işlendi: ${created.chunk_count} parça indekslendi.`);
       setDocForm((prev) => ({
         ...prev,
-        title: prev.title.trim() ? prev.title : defaultTitle,
-        content: normalized,
+        title: '',
+        content: '',
         source_type: 'file',
         source_ref: file.name,
       }));
-      setKnowledgeSuccess(`Dosya yüklendi: ${file.name}. İçerik forma aktarıldı.`);
     } catch {
       setKnowledgeError('Dosya okunurken bir sorun oluştu.');
     } finally {
