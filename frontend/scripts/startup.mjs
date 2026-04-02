@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 function isPresent(value) {
   return Boolean(value && value.trim().length > 0);
@@ -61,13 +62,12 @@ if (missingRequired.length > 0) {
   process.exit(1);
 }
 
-const migrateResult = spawnSync('node_modules/.bin/prisma', ['migrate', 'deploy'], {
+console.log('[startup] running Prisma migrations: npx prisma migrate deploy');
+const migrateResult = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
   stdio: 'inherit',
   env: process.env,
 });
-
 if (migrateResult.status !== 0) {
-  console.error('[startup] prisma migrate deploy failed');
   process.exit(migrateResult.status ?? 1);
 }
 
