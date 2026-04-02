@@ -8,6 +8,38 @@
 - Edge semantics with typed edges and editable metadata.
 - Expanded audit log events and in-panel filtering.
 - Tightened server-side ownership checks for org/team/employee/context/capability/edge APIs.
+- Authentication with email/password credentials plus optional Google OAuth.
+
+## Authentication
+### Supported sign-in flows
+- **Email/password registration** at `/register`.
+- **Email/password login** at `/login`.
+- **Google login** at `/login` only when Google OAuth env variables are configured.
+
+### Auth behavior and safety
+- Passwords are hashed with Node.js `crypto.scrypt` + per-user random salt before persistence.
+- Password hashes are stored in `User.passwordHash` and never returned from the register API.
+- Public registration always creates users with default role `USER`; admin bootstrap remains separate via `ADMIN_EMAIL` seed/upsert flow.
+- Existing session handling stays in Auth.js with Prisma adapter and `database` sessions.
+- Existing role propagation (`session.user.role`) remains intact.
+
+### Required and optional environment variables
+#### Required for app auth/session
+- `DATABASE_URL`
+- One of: `AUTH_SECRET` or `NEXTAUTH_SECRET` (or legacy `JWT_SECRET_KEY` via startup script)
+
+#### Optional for URL configuration
+- `AUTH_URL` or `NEXTAUTH_URL`
+
+#### Optional for Google provider
+Google login is enabled only if both values are present (either naming style):
+- `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET`
+- or `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+
+If Google vars are missing, the app still starts and credentials auth works normally.
+
+#### Optional bootstrap/admin seed
+- `ADMIN_EMAIL` (needed for seeding an admin user via `prisma/seed.ts`)
 
 ## CRUD flows
 - **Organization**: create from dashboard, edit/archive from org cards.
