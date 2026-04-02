@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ContextOwnerType {
+  ORGANIZATION
+  TEAM
+  EMPLOYEE
+}
+
+enum AuditAction {
+  ORGANIZATION_CREATED
+  TEAM_CREATED
+  EMPLOYEE_CREATED
+  EDGE_CREATED
+  NODE_MOVED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  name           String?
+  image          String?
+  role           UserRole        @default(USER)
+  organizations  Organization[]
+  accounts       Account[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  employeeCaps   EmployeeCapability[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Organization {
+  id            String          @id @default(cuid())
+  ownerId       String
+  name          String
+  attributes    Json            @default("{}")
+  instructions  String          @default("")
+  context       String          @default("")
+  teams         Team[]
+  employees     Employee[]
+  contextSource ContextSource[]
+  auditLogs     AuditLog[]
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([ownerId])
+}
+
+model Team {
+  id              String       @id @default(cuid())
+  organizationId  String
+  parentTeamId    String?
+  name            String
+  attributes      Json         @default("{}")
+  instructions    String       @default("")
+  context         String       @default("")
+  positionX       Float        @default(0)
+  positionY       Float        @default(0)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentTeam      Team?        @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
+  childTeams      Team[]       @relation("TeamHierarchy")
+  employees       Employee[]
+  sourceEdges     TeamEdge[]   @relation("TeamEdgeSource")
+  targetEdges     TeamEdge[]   @relation("TeamEdgeTarget")
+  contextSource   ContextSource[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([parentTeamId])
+}
+
+model Employee {
+  id               String               @id @default(cuid())
+  organizationId   String
+  teamId           String
+  managerId        String?
+  name             String
+  title            String?
+  attributes       Json                 @default("{}")
+  instructions     String               @default("")
+  context          String               @default("")
+  positionX        Float                @default(0)
+  positionY        Float                @default(0)
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team             Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  manager          Employee?            @relation("EmployeeHierarchy", fields: [managerId], references: [id])
+  directReports    Employee[]           @relation("EmployeeHierarchy")
+  sourceEdges      EmployeeEdge[]       @relation("EmployeeEdgeSource")
+  targetEdges      EmployeeEdge[]       @relation("EmployeeEdgeTarget")
+  capabilities     EmployeeCapability[]
+  contextSource    ContextSource[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([organizationId])
+  @@index([teamId])
+}
+
+model Capability {
+  id           String               @id @default(cuid())
+  key          String               @unique
+  label        String
+  description  String?
+  employees    EmployeeCapability[]
+  createdAt    DateTime             @default(now())
+}
+
+model EmployeeCapability {
+  id            String      @id @default(cuid())
+  employeeId    String
+  capabilityId  String
+  grantedById   String
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  capability    Capability  @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  grantedBy     User        @relation(fields: [grantedById], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([employeeId, capabilityId])
+}
+
+model TeamEdge {
+  id              String       @id @default(cuid())
+  organizationId  String
+  sourceTeamId    String
+  targetTeamId    String
+  label           String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceTeam      Team         @relation("TeamEdgeSource", fields: [sourceTeamId], references: [id], onDelete: Cascade)
+  targetTeam      Team         @relation("TeamEdgeTarget", fields: [targetTeamId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model EmployeeEdge {
+  id              String       @id @default(cuid())
+  teamId          String
+  sourceEmployeeId String
+  targetEmployeeId String
+  label           String?
+  team            Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sourceEmployee  Employee     @relation("EmployeeEdgeSource", fields: [sourceEmployeeId], references: [id], onDelete: Cascade)
+  targetEmployee  Employee     @relation("EmployeeEdgeTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@index([teamId])
+}
+
+model ContextSource {
+  id                String           @id @default(cuid())
+  organizationId    String
+  ownerType         ContextOwnerType
+  ownerId           String
+  label             String
+  content           String
+  embedding         Unsupported("vector")?
+  metadata          Json             @default("{}")
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime         @default(now())
+
+  @@index([organizationId, ownerType])
+}
+
+model AuditLog {
+  id              String       @id @default(cuid())
+  organizationId  String?
+  actorId         String
+  action          AuditAction
+  subjectType     String
+  subjectId       String
+  metadata        Json         @default("{}")
+  actor           User         @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
