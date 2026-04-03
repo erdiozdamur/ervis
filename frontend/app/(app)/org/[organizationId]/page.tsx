@@ -43,14 +43,26 @@ export default async function OrganizationPage({ params }: { params: { organizat
 
   return (
     <main>
-      <TopBar title="Organization Canvas" />
-      <div className="space-y-3 p-4">
-        <OrganizationEditorPanel organization={organization} />
+      <TopBar title="Organization Canvas" subtitle={`${organization.name} · team topology and hierarchy design`} />
+      <div className="space-y-4 p-1">
+        <div className="app-surface flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-400">Organization</div>
+            <div className="text-base font-semibold text-white">{organization.name}</div>
+            <div className="mt-1 text-xs text-slate-400">{teams.length} teams · {edges.length} hierarchy edges</div>
+          </div>
+          <OrganizationEditorPanel organization={organization} />
+        </div>
         <CreateTeamForm organizationId={params.organizationId} />
         <OrgCanvas initialNodes={nodes} initialEdges={flowEdges} organizationId={params.organizationId} />
         <ActivityLogPanel logs={logs} />
-        <div className="text-sm">
-          Open a team: {teams.map((team: GraphTeam) => <Link key={team.id} className="mr-3 underline" href={`/team/${team.id}`}>{team.name}</Link>)}
+        <div className="app-surface p-4 text-sm text-slate-300">
+          <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">Quick Team Access</div>
+          {teams.length ? teams.map((team: GraphTeam) => (
+            <Link key={team.id} className="mr-3 inline-flex rounded-lg border border-white/15 px-2 py-1 text-xs text-slate-200 hover:bg-white/10" href={`/team/${team.id}`}>
+              {team.name}
+            </Link>
+          )) : <span className="text-slate-500">No teams yet.</span>}
         </div>
       </div>
     </main>

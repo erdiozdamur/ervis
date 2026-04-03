@@ -1,14 +1,20 @@
+import { Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function EmployeeNode({ employeeId, name, selected, onEdit }: { employeeId: string; name: string; selected?: boolean; onEdit?: () => void }) {
   return (
-    <div className={`min-w-48 rounded-lg border-2 bg-white p-3 text-sm shadow transition ${selected ? 'border-emerald-700 ring-2 ring-emerald-200' : 'border-emerald-500'}`}>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</div>
-      <div className="font-semibold">🤖 {name}</div>
-      <div className="mt-1 text-[10px] text-slate-500">ID: {employeeId.slice(0, 8)}</div>
+    <div className={`min-w-56 rounded-2xl border p-3 text-sm shadow-lg transition ${selected ? 'border-teal-300/80 bg-slate-900 ring-2 ring-teal-300/30' : 'border-teal-300/35 bg-slate-900/95'}`}>
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-teal-200/90">
+        <Bot size={13} />
+        Employee
+      </div>
+      <div className="font-semibold text-slate-100">{name}</div>
+      <div className="mt-1 text-[10px] text-slate-400">ID: {employeeId.slice(0, 8)}</div>
       <Button
         type="button"
-        className="mt-2 h-7 w-full bg-slate-200 px-2 py-1 text-xs text-slate-900"
+        variant="secondary"
+        size="sm"
+        className="mt-3 h-8 w-full rounded-lg text-xs"
         onClick={(e) => {
           e.stopPropagation();
           onEdit?.();

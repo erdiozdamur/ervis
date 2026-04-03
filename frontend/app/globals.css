@@ -3,17 +3,84 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
+  --background: 223 43% 8%;
+  --foreground: 214 64% 96%;
+  --primary: 193 96% 56%;
+  --primary-foreground: 220 40% 10%;
+  --muted: 222 30% 14%;
+  --muted-foreground: 218 17% 72%;
+  --border: 220 23% 24%;
+  --input: 220 23% 24%;
+  --ring: 193 96% 56%;
 }
 
 body {
   @apply bg-background text-foreground antialiased;
+  font-family: var(--font-sans), sans-serif;
+  background-image:
+    radial-gradient(circle at 16% 10%, rgba(56, 189, 248, 0.18), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(14, 165, 233, 0.16), transparent 45%),
+    linear-gradient(135deg, #070b17 0%, #0b1222 35%, #0c1628 100%);
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.3);
+  color: #f8fafc;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-enter {
+  animation: page-enter 280ms ease;
+}
+
+.app-surface {
+  @apply rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur;
+}
+
+.field {
+  @apply h-10 w-full rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25;
+}
+
+.field-area {
+  @apply min-h-40 w-full rounded-xl border border-white/15 bg-white/5 p-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25;
+}
+
+.field-select {
+  @apply h-10 w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

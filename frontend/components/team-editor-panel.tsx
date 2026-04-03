@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ContextSourceType } from '@prisma/client';
+import { Database, FolderInput, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DrawerSection, DrawerShell } from '@/components/ui/drawer-shell';
 
 type TeamEditorPanelProps = {
   open: boolean;
@@ -90,60 +92,71 @@ export function TeamEditorPanel({ open, team, onClose, onSaved }: TeamEditorPane
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50">
-      <button type="button" aria-label="Close panel" className="absolute inset-0 bg-slate-950/35" onClick={onClose} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto border-l bg-white p-5 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Team Settings</h2>
-          <Button type="button" className="bg-slate-200 text-slate-900" onClick={onClose}>Close</Button>
+    <DrawerShell
+      open={open}
+      onClose={onClose}
+      title="Team Settings"
+      subtitle="Takım kimliği, talimatları ve bağlam dokümanları"
+      footer={(
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-400">{feedback || 'Takım ayarları kanvasta anında güncellenir.'}</p>
+          <Button type="button" disabled={saving} onClick={saveTeam}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      )}
+    >
+      <DrawerSection title="General" description="Takım adı ve çalışma talimatlarını güncelleyin.">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Team Name</label>
+          <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Instructions</label>
+          <textarea className="field-area" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Write team instructions..." />
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title="Knowledge Base" description="Yüklenen dokümanlar takım bağlamına vektörlenerek eklenir.">
+        <div className="rounded-xl border border-white/12 bg-white/5 p-3">
+          <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+            <FolderInput size={14} />
+            Context Document Upload
+          </label>
+          <input
+            type="file"
+            className="field h-auto py-2"
+            accept=".txt,.md,.markdown,.json,.csv,.log,.text,application/json,text/plain,text/markdown,text/csv"
+            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+          />
+          <div className="mt-2">
+            <Button type="button" size="sm" disabled={!selectedFile || uploading} onClick={uploadDocument}>
+              <Database size={14} />
+              {uploading ? 'Uploading...' : 'Upload & Vectorize'}
+            </Button>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Team Name</label>
-            <input className="h-10 w-full rounded-md border px-3 text-sm" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Instructions</label>
-            <textarea className="min-h-40 w-full rounded-md border p-3 text-sm" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Write team instructions..." />
-          </div>
-
-          <div className="rounded-lg border p-3">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Context Document Upload</div>
-            <input
-              type="file"
-              className="mb-2 block w-full text-sm"
-              accept=".txt,.md,.markdown,.json,.csv,.log,.text,application/json,text/plain,text/markdown,text/csv"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-            />
-            <div className="mb-2 text-xs text-slate-500">Uploaded content is embedded and stored in pgvector for this team.</div>
-            <Button type="button" disabled={!selectedFile || uploading} onClick={uploadDocument}>
-              {uploading ? 'Uploading...' : 'Upload Document'}
-            </Button>
-            <div className="mt-3 space-y-2">
-              {sources.length ? sources.map((source) => (
-                <div key={source.id} className="rounded border p-2 text-xs">
-                  <div className="font-medium">{source.title}</div>
-                  <div className="text-slate-500">{source.metadata?.fileName ?? source.type}</div>
-                </div>
-              )) : <div className="text-xs text-slate-500">No context documents yet.</div>}
+        <div className="space-y-2">
+          {sources.length ? sources.map((source) => (
+            <div key={source.id} className="rounded-xl border border-white/12 bg-slate-950/60 p-3 text-xs">
+              <div className="font-medium text-slate-100">{source.title}</div>
+              <div className="mt-1 text-slate-400">{source.metadata?.fileName ?? source.type}</div>
             </div>
-          </div>
-
-          {feedback ? <p className="text-xs text-slate-600">{feedback}</p> : null}
-
-          <div className="flex gap-2">
-            <Button type="button" disabled={saving} onClick={saveTeam}>
-              {saving ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
+          )) : <div className="rounded-xl border border-dashed border-white/20 p-3 text-xs text-slate-400">No context documents yet.</div>}
         </div>
-      </aside>
-    </div>
+      </DrawerSection>
+
+      <DrawerSection title="Future Modules" description="Yeni takım modülleri için ayrılmış genişleme alanı.">
+        <div className="rounded-xl border border-dashed border-cyan-300/30 bg-cyan-400/5 p-3 text-xs text-cyan-100/80">
+          <div className="mb-1 flex items-center gap-2 font-semibold">
+            <Sparkles size={14} />
+            Reserved Slots
+          </div>
+          SLA hedefleri, takım çalışma pencereleri, handoff politikaları ve kalite skorları burada yönetilecek.
+        </div>
+      </DrawerSection>
+    </DrawerShell>
   );
 }
-

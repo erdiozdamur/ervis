@@ -1,16 +1,22 @@
 import Link from 'next/link';
+import { Layers3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function TeamNode({ teamId, name, selected, onEdit }: { teamId: string; name: string; selected?: boolean; onEdit?: () => void }) {
   return (
-    <div className={`min-w-48 rounded-lg border-2 bg-white p-3 text-sm shadow transition ${selected ? 'border-blue-700 ring-2 ring-blue-200' : 'border-blue-500'}`}>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Team</div>
-      <Link href={`/team/${teamId}`} className="block text-sm font-semibold text-slate-900 hover:underline" onClick={(e) => e.stopPropagation()}>
+    <div className={`min-w-56 rounded-2xl border p-3 text-sm shadow-lg transition ${selected ? 'border-cyan-300/80 bg-slate-900 ring-2 ring-cyan-300/30' : 'border-cyan-300/35 bg-slate-900/95'}`}>
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-cyan-200/90">
+        <Layers3 size={13} />
+        Team
+      </div>
+      <Link href={`/team/${teamId}`} className="block text-sm font-semibold text-slate-100 hover:text-cyan-100 hover:underline" onClick={(e) => e.stopPropagation()}>
         {name}
       </Link>
       <Button
         type="button"
-        className="mt-2 h-7 w-full bg-slate-200 px-2 py-1 text-xs text-slate-900"
+        variant="secondary"
+        size="sm"
+        className="mt-3 h-8 w-full rounded-lg text-xs"
         onClick={(e) => {
           e.stopPropagation();
           onEdit?.();

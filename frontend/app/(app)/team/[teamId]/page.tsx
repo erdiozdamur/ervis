@@ -42,10 +42,22 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
 
   return (
     <main>
-      <TopBar title={`Team Canvas · ${team.name}`} />
-      <div className="space-y-3 p-4">
+      <TopBar title={`Team Canvas · ${team.name}`} subtitle="People graph, handoff design and role-level context orchestration" />
+      <div className="space-y-4 p-1">
+        <div className="app-surface p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-400">Team</div>
+          <div className="mt-1 text-base font-semibold text-white">{team.name}</div>
+          <div className="mt-1 text-xs text-slate-400">{employees.length} employees · {edges.length} handoff connections</div>
+        </div>
         <CreateEmployeeForm organizationId={team.organizationId} teamId={params.teamId} />
-        <TeamCanvas initialNodes={nodes} initialEdges={flowEdges} teamId={params.teamId} organizationId={team.organizationId} />
+        <TeamCanvas
+          initialNodes={nodes}
+          initialEdges={flowEdges}
+          teamId={params.teamId}
+          organizationId={team.organizationId}
+          teamName={team.name}
+          teamInstructions={team.instructions}
+        />
         <ActivityLogPanel logs={logs} />
       </div>
     </main>

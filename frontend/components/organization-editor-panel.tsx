@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ContextSourceType, EntityStatus } from '@prisma/client';
+import { Database, FolderInput, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DrawerSection, DrawerShell } from '@/components/ui/drawer-shell';
+import { cn } from '@/lib/utils';
 
 type OrganizationEditorPanelProps = {
   organization: {
@@ -14,6 +17,8 @@ type OrganizationEditorPanelProps = {
     instructions: string;
     attributes: unknown;
   };
+  triggerClassName?: string;
+  triggerLabel?: string;
 };
 
 type ContextSourceListItem = {
@@ -23,7 +28,7 @@ type ContextSourceListItem = {
   metadata?: { fileName?: string; mimeType?: string; uploadedAt?: string };
 };
 
-export function OrganizationEditorPanel({ organization }: OrganizationEditorPanelProps) {
+export function OrganizationEditorPanel({ organization, triggerClassName, triggerLabel }: OrganizationEditorPanelProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(organization.name);
   const [instructions, setInstructions] = useState(organization.instructions ?? '');
@@ -108,61 +113,81 @@ export function OrganizationEditorPanel({ organization }: OrganizationEditorPane
 
   return (
     <>
-      <Button type="button" onClick={() => setOpen(true)}>Edit Organization</Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className={cn('rounded-lg', triggerClassName)}
+        onClick={() => setOpen(true)}
+      >
+        {triggerLabel ?? 'Edit Organization'}
+      </Button>
 
-      {open ? (
-        <div className="fixed inset-0 z-50">
-          <button type="button" aria-label="Close panel" className="absolute inset-0 bg-slate-950/35" onClick={() => setOpen(false)} />
-          <aside className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto border-l bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Organization Settings</h2>
-              <Button type="button" className="bg-slate-200 text-slate-900" onClick={() => setOpen(false)}>Close</Button>
+      <DrawerShell
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Organization Settings"
+        subtitle="Temel kimlik, çalışma talimatları ve organizasyon bağlamı"
+        footer={(
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-400">{feedback || 'Değişiklikler kaydedildiğinde tüm kanvasa yansır.'}</p>
+            <Button type="button" disabled={saving} onClick={saveOrganization}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        )}
+      >
+        <DrawerSection title="General" description="Organizasyon adı ve global çalışma talimatları">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Organization Name</label>
+            <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Organization name" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Instructions</label>
+            <textarea className="field-area" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Write organization instructions..." />
+          </div>
+        </DrawerSection>
+
+        <DrawerSection title="Knowledge Base" description="Yüklenen dokümanlar vektöre dönüştürülerek organization seviyesinde saklanır.">
+          <div className="rounded-xl border border-white/12 bg-white/5 p-3">
+            <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+              <FolderInput size={14} />
+              Context Document Upload
+            </label>
+            <input
+              type="file"
+              className="field h-auto py-2"
+              accept=".txt,.md,.markdown,.json,.csv,.log,.text,application/json,text/plain,text/markdown,text/csv"
+              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="mt-2 flex gap-2">
+              <Button type="button" size="sm" disabled={!selectedFile || uploading} onClick={uploadDocument}>
+                <Database size={14} />
+                {uploading ? 'Uploading...' : 'Upload & Vectorize'}
+              </Button>
             </div>
+          </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Organization Name</label>
-                <input className="h-10 w-full rounded-md border px-3 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Organization name" />
+          <div className="space-y-2">
+            {sources.length ? sources.map((source) => (
+              <div key={source.id} className="rounded-xl border border-white/12 bg-slate-950/60 p-3 text-xs">
+                <div className="font-medium text-slate-100">{source.title}</div>
+                <div className="mt-1 text-slate-400">{source.metadata?.fileName ?? source.type}</div>
               </div>
+            )) : <div className="rounded-xl border border-dashed border-white/20 p-3 text-xs text-slate-400">No context documents yet.</div>}
+          </div>
+        </DrawerSection>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Instructions</label>
-                <textarea className="min-h-40 w-full rounded-md border p-3 text-sm" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Write organization instructions..." />
-              </div>
-
-              <div className="rounded-lg border p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Context Document Upload</div>
-                <input
-                  type="file"
-                  className="mb-2 block w-full text-sm"
-                  accept=".txt,.md,.markdown,.json,.csv,.log,.text,application/json,text/plain,text/markdown,text/csv"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                />
-                <div className="mb-2 text-xs text-slate-500">Uploaded content is embedded and stored in pgvector for this organization.</div>
-                <Button type="button" disabled={!selectedFile || uploading} onClick={uploadDocument}>
-                  {uploading ? 'Uploading...' : 'Upload Document'}
-                </Button>
-                <div className="mt-3 space-y-2">
-                  {sources.length ? sources.map((source) => (
-                    <div key={source.id} className="rounded border p-2 text-xs">
-                      <div className="font-medium">{source.title}</div>
-                      <div className="text-slate-500">{source.metadata?.fileName ?? source.type}</div>
-                    </div>
-                  )) : <div className="text-xs text-slate-500">No context documents yet.</div>}
-                </div>
-              </div>
-
-              {feedback ? <p className="text-xs text-slate-600">{feedback}</p> : null}
-
-              <div className="flex gap-2">
-                <Button type="button" disabled={saving} onClick={saveOrganization}>
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
+        <DrawerSection title="Future Modules" description="Yeni alanlar geldiğinde düzen bozulmadan genişleyebilmek için ayrılan blok.">
+          <div className="rounded-xl border border-dashed border-cyan-300/30 bg-cyan-400/5 p-3 text-xs text-cyan-100/80">
+            <div className="mb-1 flex items-center gap-2 font-semibold">
+              <Sparkles size={14} />
+              Reserved Slots
             </div>
-          </aside>
-        </div>
-      ) : null}
+            Policy packs, guardrails, routing profiles ve organization-level automations burada konumlanacak.
+          </div>
+        </DrawerSection>
+      </DrawerShell>
     </>
   );
 }

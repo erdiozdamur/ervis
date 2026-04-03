@@ -14,16 +14,16 @@ export function ActivityLogPanel({ logs }: { logs: Log[] }) {
   );
 
   return (
-    <section className="h-64 overflow-auto border-t p-3">
-      <h3 className="mb-2 font-semibold">Activity</h3>
-      <div className="mb-2 flex gap-2 text-xs">
-        <select className="rounded border px-2 py-1" value={subjectType} onChange={(e) => setSubjectType(e.target.value)}>
+    <section className="app-surface h-64 overflow-auto p-3">
+      <h3 className="mb-2 font-semibold text-slate-100">Activity</h3>
+      <div className="mb-2 flex flex-wrap gap-2 text-xs">
+        <select className="field-select h-9 min-w-40" value={subjectType} onChange={(e) => setSubjectType(e.target.value)}>
           <option value="all">All entities</option>
           {[...new Set(logs.map((log) => log.subjectType))].map((value) => (
             <option key={value} value={value}>{value}</option>
           ))}
         </select>
-        <select className="rounded border px-2 py-1" value={action} onChange={(e) => setAction(e.target.value)}>
+        <select className="field-select h-9 min-w-40" value={action} onChange={(e) => setAction(e.target.value)}>
           <option value="all">All events</option>
           {[...new Set(logs.map((log) => log.action))].map((value) => (
             <option key={value} value={value}>{value}</option>
@@ -32,9 +32,9 @@ export function ActivityLogPanel({ logs }: { logs: Log[] }) {
       </div>
       <ul className="space-y-1 text-xs">
         {filtered.map((log) => (
-          <li key={log.id} className="rounded bg-muted p-2">
-            <div>{log.action} · {log.subjectType}</div>
-            <div className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
+          <li key={log.id} className="rounded-xl border border-white/10 bg-slate-900/70 p-2">
+            <div className="text-slate-200">{log.action} · {log.subjectType}</div>
+            <div className="text-slate-500">{new Date(log.createdAt).toLocaleString()}</div>
           </li>
         ))}
       </ul>
