@@ -1,9 +1,6 @@
 import { notFound } from 'next/navigation';
 import { Edge, Node } from 'reactflow';
-import { TopBar } from '@/components/layout/top-bar';
 import { TeamCanvas } from '@/components/canvas/team-canvas';
-import { ActivityLogPanel } from '@/components/activity-log-panel';
-import { CreateEmployeeForm } from '@/components/create-employee-form';
 import { getTeamGraph } from '@/features/team/queries';
 import { prisma } from '@/db/client';
 import { requireUser } from '@/server/auth/session';
@@ -41,25 +38,16 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
   }));
 
   return (
-    <main>
-      <TopBar title={`Team Canvas · ${team.name}`} subtitle="People graph, handoff design and role-level context orchestration" />
-      <div className="space-y-4 p-1">
-        <div className="app-surface p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Team</div>
-          <div className="mt-1 text-base font-semibold text-white">{team.name}</div>
-          <div className="mt-1 text-xs text-slate-400">{employees.length} employees · {edges.length} handoff connections</div>
-        </div>
-        <CreateEmployeeForm organizationId={team.organizationId} teamId={params.teamId} />
-        <TeamCanvas
-          initialNodes={nodes}
-          initialEdges={flowEdges}
-          teamId={params.teamId}
-          organizationId={team.organizationId}
-          teamName={team.name}
-          teamInstructions={team.instructions}
-        />
-        <ActivityLogPanel logs={logs} />
-      </div>
+    <main className="-mx-3 -mt-14 h-[calc(100vh-1.5rem)] sm:-mx-5 lg:-mx-8 lg:-mt-3">
+      <TeamCanvas
+        initialNodes={nodes}
+        initialEdges={flowEdges}
+        teamId={params.teamId}
+        organizationId={team.organizationId}
+        teamName={team.name}
+        teamInstructions={team.instructions}
+        logs={logs}
+      />
     </main>
   );
 }

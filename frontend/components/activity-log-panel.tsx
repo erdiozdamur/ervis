@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { cn } from '@/lib/utils';
 
-type Log = { id: string; action: string; subjectType: string; createdAt: Date };
+type Log = { id: string; action: string; subjectType: string; createdAt: Date | string };
 
-export function ActivityLogPanel({ logs }: { logs: Log[] }) {
+export function ActivityLogPanel({ logs, className }: { logs: Log[]; className?: string }) {
   const [subjectType, setSubjectType] = useState('all');
   const [action, setAction] = useState('all');
 
@@ -14,7 +15,7 @@ export function ActivityLogPanel({ logs }: { logs: Log[] }) {
   );
 
   return (
-    <section className="app-surface h-64 overflow-auto p-3">
+    <section className={cn('app-surface h-64 overflow-auto p-3', className)}>
       <h3 className="mb-2 font-semibold text-slate-100">Activity</h3>
       <div className="mb-2 flex flex-wrap gap-2 text-xs">
         <select className="field-select h-9 min-w-40" value={subjectType} onChange={(e) => setSubjectType(e.target.value)}>
