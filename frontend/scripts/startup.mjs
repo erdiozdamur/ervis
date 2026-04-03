@@ -62,13 +62,23 @@ if (missingRequired.length > 0) {
   process.exit(1);
 }
 
-console.log('[startup] running Prisma migrations: npx prisma migrate deploy');
-const migrateResult = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
-  stdio: 'inherit',
-  env: process.env,
-});
-if (migrateResult.status !== 0) {
-  process.exit(migrateResult.status ?? 1);
+const shouldRunMigrations = (process.env.APPLY_MIGRATIONS_ON_STARTUP ?? 'false').toLowerCase() === 'true';
+if (shouldRunMigrations) {
+  console.log('[startup] APPLY_MIGRATIONS_ON_STARTUP=true; running Prisma migrations: npx prisma migrate deploy');
+  const migrateResult = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  if (migrateResult.status !== 0) {
+    console.error('[startup] Prisma migration deploy failed.');
+    console.error('[startup] Action: inspect migration status with `npx prisma migrate status`.');
+    console.error('[startup] If Prisma reports P3009, resolve migration history before restarting:');
+    console.error('[startup]   - mark rolled back: npx prisma migrate resolve --rolled-back <migration_name>');
+    console.error('[startup]   - or mark applied: npx prisma migrate resolve --applied <migration_name>');
+    process.exit(migrateResult.status ?? 1);
+  }
+} else {
+  console.log('[startup] APPLY_MIGRATIONS_ON_STARTUP is not true; skipping migrate deploy in app startup.');
 }
 
 const child = spawn('node_modules/.bin/next', ['start', '-H', '0.0.0.0', '-p', '3000'], {

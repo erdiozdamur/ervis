@@ -91,3 +91,17 @@ Each edge supports label, description, condition note and can be edited/deleted.
 - Full document embedding/vector ingestion pipeline.
 - Rich modal/sheet design system (current UI is pragmatic inline forms).
 - Full automated test coverage across all APIs.
+
+## Prisma migration recovery (PostgreSQL)
+- The initial migration (`202604020001_init`) creates the `vector` extension, so PostgreSQL must include `pgvector`.
+- `docker-compose.yml` uses `pgvector/pgvector:pg16` and runs migrations in a one-shot `migrator` service before the frontend starts.
+- The frontend startup script skips `migrate deploy` by default to avoid restart loops. Set `APPLY_MIGRATIONS_ON_STARTUP=true` only when intentionally running migrations inside app startup.
+
+If migration history is in a failed state (`P3009`) and data must be preserved:
+1. Inspect failed entries:
+   - `SELECT migration_name, started_at, finished_at, rolled_back_at, logs FROM "_prisma_migrations" ORDER BY started_at DESC;`
+2. Check whether migration SQL effects exist in the schema.
+3. Resolve based on reality:
+   - Mark rolled back if SQL did not apply: `npx prisma migrate resolve --rolled-back 202604020001_init`
+   - Mark applied if SQL already exists: `npx prisma migrate resolve --applied 202604020001_init`
+4. Re-run deploy: `npx prisma migrate deploy`
