@@ -86,7 +86,7 @@ services:
         condition: service_completed_successfully
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${DOKPLOY_NETWORK_NAME:-bridge}"
+      - "traefik.docker.network=${DOKPLOY_NETWORK_NAME:-dokploy-network}"
       - "traefik.http.routers.${APP_NAME:-ervis}-web.rule=Host(`${APP_DOMAIN:-localhost}`)"
       - "traefik.http.routers.${APP_NAME:-ervis}-web.entrypoints=web"
       - "traefik.http.routers.${APP_NAME:-ervis}-web.middlewares=redirect-to-https@file"
@@ -108,4 +108,4 @@ volumes:
 networks:
   dokploy-network:
     external: true
-    name: "${DOKPLOY_NETWORK_NAME:-bridge}"
+    name: "${DOKPLOY_NETWORK_NAME:-dokploy-network}"
