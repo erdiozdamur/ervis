@@ -79,7 +79,28 @@ services:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${DOKPLOY_NETWORK_NAME:-bridge}"
+      - "traefik.http.routers.${APP_NAME:-ervis}-web.rule=Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.${APP_NAME:-ervis}-web.entrypoints=web"
+      - "traefik.http.routers.${APP_NAME:-ervis}-web.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.${APP_NAME:-ervis}-web.service=${APP_NAME:-ervis}-web"
+      - "traefik.http.services.${APP_NAME:-ervis}-web.loadbalancer.server.port=3000"
+      - "traefik.http.routers.${APP_NAME:-ervis}-websecure.rule=Host(`${APP_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.${APP_NAME:-ervis}-websecure.entrypoints=websecure"
+      - "traefik.http.routers.${APP_NAME:-ervis}-websecure.service=${APP_NAME:-ervis}-websecure"
+      - "traefik.http.routers.${APP_NAME:-ervis}-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${APP_NAME:-ervis}-websecure.loadbalancer.server.port=3000"
+    networks:
+      - default
+      - dokploy-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
+
+networks:
+  dokploy-network:
+    external: true
+    name: "${DOKPLOY_NETWORK_NAME:-bridge}"
