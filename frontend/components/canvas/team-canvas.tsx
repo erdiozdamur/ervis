@@ -3,13 +3,17 @@
 import { useMemo, useState } from 'react';
 import ReactFlow, {
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   Connection,
   Controls,
   Edge,
+  EdgeChange,
   MarkerType,
   MiniMap,
   Node,
+  NodeChange,
   ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -85,6 +89,14 @@ export function TeamCanvas({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ employeeId: node.id, positionX: node.position.x, positionY: node.position.y }),
     });
+  };
+
+  const onNodesChange = (changes: NodeChange[]) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
+  };
+
+  const onEdgesChange = (changes: EdgeChange[]) => {
+    setEdges((eds) => applyEdgeChanges(changes, eds));
   };
 
   const createEmployee = async () => {
@@ -167,8 +179,8 @@ export function TeamCanvas({
             nodes={visibleNodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodesChange={() => {}}
-            onEdgesChange={() => {}}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             onNodeDragStop={onNodeDragStop}
