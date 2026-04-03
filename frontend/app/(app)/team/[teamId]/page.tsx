@@ -29,7 +29,7 @@ export default async function TeamPage({ params }: { params: { teamId: string } 
     id: employee.id,
     type: 'employee',
     position: { x: employee.positionX, y: employee.positionY },
-    data: { name: employee.name, description: employee.description, status: employee.status, tags: employee.tags, instructions: employee.instructions, attributes: employee.attributes, title: employee.title, specialization: employee.specialization, modelPreference: employee.modelPreference, active: employee.active },
+    data: { name: employee.name, instructions: employee.instructions, modelPreference: employee.modelPreference },
   }));
 
   const flowEdges: Edge[] = edges.map((edge: TeamEdge) => ({

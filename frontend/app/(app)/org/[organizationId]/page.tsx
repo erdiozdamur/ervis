@@ -5,6 +5,7 @@ import { TopBar } from '@/components/layout/top-bar';
 import { OrgCanvas } from '@/components/canvas/org-canvas';
 import { ActivityLogPanel } from '@/components/activity-log-panel';
 import { CreateTeamForm } from '@/components/create-team-form';
+import { OrganizationEditorPanel } from '@/components/organization-editor-panel';
 import { getOrganizationGraph } from '@/features/org/queries';
 import { prisma } from '@/db/client';
 import { requireUser } from '@/server/auth/session';
@@ -29,7 +30,7 @@ export default async function OrganizationPage({ params }: { params: { organizat
     id: team.id,
     type: 'team',
     position: { x: team.positionX, y: team.positionY },
-    data: { name: team.name, description: team.description, status: team.status, tags: team.tags, instructions: team.instructions, attributes: team.attributes, rolePurpose: team.rolePurpose },
+    data: { name: team.name, instructions: team.instructions },
   }));
 
   const flowEdges: Edge[] = edges.map((edge: GraphEdge) => ({
@@ -44,6 +45,7 @@ export default async function OrganizationPage({ params }: { params: { organizat
     <main>
       <TopBar title="Organization Canvas" />
       <div className="space-y-3 p-4">
+        <OrganizationEditorPanel organization={organization} />
         <CreateTeamForm organizationId={params.organizationId} />
         <OrgCanvas initialNodes={nodes} initialEdges={flowEdges} organizationId={params.organizationId} />
         <ActivityLogPanel logs={logs} />

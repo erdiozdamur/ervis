@@ -41,16 +41,16 @@ async function main() {
     },
   });
 
-  const growth = await prisma.team.upsert({ where: { id: 'seed-team-growth' }, update: {}, create: { id: 'seed-team-growth', organizationId: org.id, name: 'Growth Team', rolePurpose: 'Drive funnel growth', positionX: 80, positionY: 120 } });
-  const ops = await prisma.team.upsert({ where: { id: 'seed-team-ops' }, update: {}, create: { id: 'seed-team-ops', organizationId: org.id, name: 'Ops Team', rolePurpose: 'Operational quality', positionX: 380, positionY: 220 } });
-  const qa = await prisma.team.upsert({ where: { id: 'seed-team-qa' }, update: {}, create: { id: 'seed-team-qa', organizationId: org.id, name: 'QA Team', rolePurpose: 'Review quality', positionX: 660, positionY: 150 } });
+  const growth = await prisma.team.upsert({ where: { id: 'seed-team-growth' }, update: {}, create: { id: 'seed-team-growth', organizationId: org.id, name: 'Growth Team', positionX: 80, positionY: 120 } });
+  const ops = await prisma.team.upsert({ where: { id: 'seed-team-ops' }, update: {}, create: { id: 'seed-team-ops', organizationId: org.id, name: 'Ops Team', positionX: 380, positionY: 220 } });
+  const qa = await prisma.team.upsert({ where: { id: 'seed-team-qa' }, update: {}, create: { id: 'seed-team-qa', organizationId: org.id, name: 'QA Team', positionX: 660, positionY: 150 } });
 
   await prisma.teamEdge.upsert({ where: { id: 'seed-team-edge-1' }, update: {}, create: { id: 'seed-team-edge-1', organizationId: org.id, sourceTeamId: growth.id, targetTeamId: ops.id, edgeType: EdgeType.HIERARCHY, label: 'handoff' } });
   await prisma.teamEdge.upsert({ where: { id: 'seed-team-edge-2' }, update: {}, create: { id: 'seed-team-edge-2', organizationId: org.id, sourceTeamId: ops.id, targetTeamId: qa.id, edgeType: EdgeType.APPROVAL, label: 'approval' } });
 
-  const a = await prisma.employee.upsert({ where: { id: 'seed-employee-a' }, update: {}, create: { id: 'seed-employee-a', organizationId: org.id, teamId: growth.id, name: 'Ari Agent', title: 'Growth Analyst', specialization: 'SEO and trend analysis', positionX: 100, positionY: 100 } });
-  const b = await prisma.employee.upsert({ where: { id: 'seed-employee-b' }, update: {}, create: { id: 'seed-employee-b', organizationId: org.id, teamId: growth.id, name: 'Nova Agent', title: 'Content Planner', specialization: 'Content strategy', positionX: 320, positionY: 180 } });
-  const c = await prisma.employee.upsert({ where: { id: 'seed-employee-c' }, update: {}, create: { id: 'seed-employee-c', organizationId: org.id, teamId: ops.id, name: 'Rune Agent', title: 'Ops Coordinator', positionX: 180, positionY: 220 } });
+  const a = await prisma.employee.upsert({ where: { id: 'seed-employee-a' }, update: {}, create: { id: 'seed-employee-a', organizationId: org.id, teamId: growth.id, name: 'Ari Agent', positionX: 100, positionY: 100 } });
+  const b = await prisma.employee.upsert({ where: { id: 'seed-employee-b' }, update: {}, create: { id: 'seed-employee-b', organizationId: org.id, teamId: growth.id, name: 'Nova Agent', positionX: 320, positionY: 180 } });
+  const c = await prisma.employee.upsert({ where: { id: 'seed-employee-c' }, update: {}, create: { id: 'seed-employee-c', organizationId: org.id, teamId: ops.id, name: 'Rune Agent', positionX: 180, positionY: 220 } });
 
   await prisma.employeeEdge.upsert({ where: { id: 'seed-employee-edge-1' }, update: {}, create: { id: 'seed-employee-edge-1', teamId: growth.id, sourceEmployeeId: a.id, targetEmployeeId: b.id, edgeType: EdgeType.HANDOFF, label: 'analysis to planning' } });
   await prisma.employeeEdge.upsert({ where: { id: 'seed-employee-edge-2' }, update: {}, create: { id: 'seed-employee-edge-2', teamId: growth.id, sourceEmployeeId: b.id, targetEmployeeId: a.id, edgeType: EdgeType.FEEDBACK_LOOP, label: 'feedback' } });

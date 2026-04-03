@@ -15,11 +15,7 @@ type SelectedEntity = {
   tags?: string[];
   instructions?: string;
   attributes?: Record<string, unknown>;
-  rolePurpose?: string;
-  title?: string | null;
-  specialization?: string;
   modelPreference?: ModelPreference;
-  active?: boolean;
 };
 
 type ContextView = {
@@ -44,11 +40,7 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
       tags: (entity.tags ?? []).join(', '),
       instructions: entity.instructions ?? '',
       attributes: JSON.stringify(entity.attributes ?? {}, null, 2),
-      rolePurpose: entity.rolePurpose ?? '',
-      title: entity.title ?? '',
-      specialization: entity.specialization ?? '',
       modelPreference: entity.modelPreference ?? 'GPT_4O_MINI',
-      active: entity.active ?? true,
     });
   }, [entity]);
 
@@ -79,7 +71,7 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
       await fetch('/api/teams', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: entity.id, ...form, tags: String(form.tags ?? '').split(',').map((x) => x.trim()).filter(Boolean) }),
+        body: JSON.stringify({ teamId: entity.id, name: String(form.name ?? ''), instructions: String(form.instructions ?? '') }),
       });
       await fetch('/api/capabilities', {
         method: 'POST',
@@ -90,7 +82,7 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
       await fetch('/api/employees', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: entity.id, ...form, tags: String(form.tags ?? '').split(',').map((x) => x.trim()).filter(Boolean), title: String(form.title ?? '') || null }),
+        body: JSON.stringify({ employeeId: entity.id, name: String(form.name ?? ''), instructions: String(form.instructions ?? ''), modelPreference: String(form.modelPreference ?? 'GPT_4O_MINI') }),
       });
       await fetch('/api/capabilities', {
         method: 'POST',
@@ -98,13 +90,6 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
         body: JSON.stringify({ kind: 'employee', employeeId: entity.id, capabilityIds: selectedCapabilityIds }),
       });
     }
-    refresh();
-  };
-
-  const archive = async () => {
-    const endpoint = entity.kind === 'organization' ? '/api/organizations' : entity.kind === 'team' ? '/api/teams' : '/api/employees';
-    const key = entity.kind === 'organization' ? 'organizationId' : entity.kind === 'team' ? 'teamId' : 'employeeId';
-    await fetch(endpoint, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: entity.id }) });
     refresh();
   };
 
@@ -116,11 +101,9 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
       <select className="w-full rounded border px-2 py-1" value={String(form.status ?? 'ACTIVE')} onChange={(e) => setForm((v) => ({ ...v, status: e.target.value }))}>
         <option value="ACTIVE">ACTIVE</option><option value="ARCHIVED">ARCHIVED</option>
       </select>
-      <input className="w-full rounded border px-2 py-1" value={String(form.tags ?? '')} onChange={(e) => setForm((v) => ({ ...v, tags: e.target.value }))} placeholder="Tags comma-separated" />
+      {entity.kind !== 'team' ? <input className="w-full rounded border px-2 py-1" value={String(form.tags ?? '')} onChange={(e) => setForm((v) => ({ ...v, tags: e.target.value }))} placeholder="Tags comma-separated" /> : null}
       <textarea className="h-16 w-full rounded border px-2 py-1" value={String(form.instructions ?? '')} onChange={(e) => setForm((v) => ({ ...v, instructions: e.target.value }))} placeholder="Instructions" />
-      <textarea className="h-20 w-full rounded border px-2 py-1 font-mono" value={String(form.attributes ?? '{}')} onChange={(e) => setForm((v) => ({ ...v, attributes: e.target.value }))} placeholder="Attributes JSON" />
-
-      {entity.kind === 'team' ? <input className="w-full rounded border px-2 py-1" value={String(form.rolePurpose ?? '')} onChange={(e) => setForm((v) => ({ ...v, rolePurpose: e.target.value }))} placeholder="Role / purpose" /> : null}
+      {entity.kind !== 'team' ? <textarea className="h-20 w-full rounded border px-2 py-1 font-mono" value={String(form.attributes ?? '{}')} onChange={(e) => setForm((v) => ({ ...v, attributes: e.target.value }))} placeholder="Attributes JSON" /> : null}
 
       {entity.kind === 'team' ? (
         <div className="space-y-1 rounded border p-2">
@@ -137,14 +120,11 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
 
       {entity.kind === 'employee' ? (
         <>
-          <input className="w-full rounded border px-2 py-1" value={String(form.title ?? '')} onChange={(e) => setForm((v) => ({ ...v, title: e.target.value }))} placeholder="Title" />
-          <input className="w-full rounded border px-2 py-1" value={String(form.specialization ?? '')} onChange={(e) => setForm((v) => ({ ...v, specialization: e.target.value }))} placeholder="Specialization" />
           <select className="w-full rounded border px-2 py-1" value={String(form.modelPreference ?? 'GPT_4O_MINI')} onChange={(e) => setForm((v) => ({ ...v, modelPreference: e.target.value }))}>
             <option value="GPT_4_1">GPT_4_1</option>
             <option value="GPT_4O">GPT_4O</option>
             <option value="GPT_4O_MINI">GPT_4O_MINI</option>
           </select>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={Boolean(form.active)} onChange={(e) => setForm((v) => ({ ...v, active: e.target.checked }))} />Active</label>
 
           <div className="space-y-1 rounded border p-2">
             <div className="font-semibold">Capabilities</div>
@@ -193,7 +173,6 @@ export function PropertiesPanel({ entity, edges, refresh }: { entity?: SelectedE
 
       <div className="flex gap-2">
         <Button type="button" onClick={save}>Save</Button>
-        <Button type="button" className="bg-slate-200 text-slate-900" onClick={archive}>Archive</Button>
       </div>
     </aside>
   );

@@ -1,0 +1,7 @@
+ALTER TABLE "Team"
+  DROP COLUMN IF EXISTS "description",
+  DROP COLUMN IF EXISTS "status",
+  DROP COLUMN IF EXISTS "tags",
+  DROP COLUMN IF EXISTS "rolePurpose",
+  DROP COLUMN IF EXISTS "attributes",
+  DROP COLUMN IF EXISTS "context";

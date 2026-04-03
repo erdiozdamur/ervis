@@ -5,20 +5,36 @@ import ReactFlow, { addEdge, Background, Connection, Controls, Edge, MarkerType,
 import 'reactflow/dist/style.css';
 import { EdgeType } from '@prisma/client';
 import { EmployeeNode } from '@/components/canvas/employee-node';
-import { PropertiesPanel } from '@/components/properties-panel';
+import { EmployeeEditorPanel } from '@/components/employee-editor-panel';
 import { Button } from '@/components/ui/button';
 
 const nodeTypes = {
-  employee: ({ data, selected }: { data: { name: string; title?: string }; selected: boolean }) => <EmployeeNode name={data.name} title={data.title} selected={selected} />,
+  employee: ({ id, data, selected }: { id: string; data: { name: string; onEdit?: () => void }; selected: boolean }) => (
+    <EmployeeNode employeeId={id} name={data.name} selected={selected} onEdit={data.onEdit} />
+  ),
 };
 
 export function TeamCanvas({ initialNodes, initialEdges, teamId, organizationId }: { initialNodes: Node[]; initialEdges: Edge[]; teamId: string; organizationId: string }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const visibleNodes = useMemo(() => nodes.filter((n) => String((n.data as { name?: string }).name ?? '').toLowerCase().includes(search.toLowerCase())), [nodes, search]);
+  const visibleNodes = useMemo(
+    () =>
+      nodes
+        .filter((n) => String((n.data as { name?: string }).name ?? '').toLowerCase().includes(search.toLowerCase()))
+        .map((n) => ({
+          ...n,
+          data: {
+            ...(n.data as object),
+            onEdit: () => setEditingEmployeeId(n.id),
+          },
+          selected: n.id === selectedNodeId,
+        })),
+    [nodes, search, selectedNodeId],
+  );
 
   const onConnect = async (connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -31,15 +47,11 @@ export function TeamCanvas({ initialNodes, initialEdges, teamId, organizationId 
     await fetch('/api/employees', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId: node.id, positionX: node.position.x, positionY: node.position.y }) });
   };
 
-  const selectedEntity = selectedNode
-    ? ({ kind: 'employee', id: selectedNode.id, teamId, organizationId, ...(selectedNode.data as object) } as never)
-    : undefined;
-
-  const selectedEdges = selectedNode ? edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id).map((e) => ({ id: e.id, label: e.label as string | null, edgeType: ((e.data as { edgeType?: EdgeType } | undefined)?.edgeType ?? EdgeType.HANDOFF), description: '', conditionNote: '' })) : [];
+  const editingEmployee = editingEmployeeId ? nodes.find((n) => n.id === editingEmployeeId) : null;
 
   return (
-    <div className="flex h-[70vh] overflow-hidden rounded border">
-      <div className="relative flex-1">
+    <>
+      <div className="relative h-[70vh] overflow-hidden rounded border">
         <div className="absolute left-2 top-2 z-10 flex gap-2">
           <input className="rounded border bg-white px-2 py-1 text-xs" placeholder="Search employees" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Button type="button" onClick={async () => {
@@ -56,7 +68,7 @@ export function TeamCanvas({ initialNodes, initialEdges, teamId, organizationId 
           onNodesChange={() => {}}
           onEdgesChange={() => {}}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelectedNode(node)}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onNodeDragStop={onNodeDragStop}
           fitView
         >
@@ -65,7 +77,21 @@ export function TeamCanvas({ initialNodes, initialEdges, teamId, organizationId 
           <Background />
         </ReactFlow>
       </div>
-      <PropertiesPanel entity={selectedEntity} edges={selectedEdges} refresh={() => window.location.reload()} />
-    </div>
+      {editingEmployee ? (
+        <EmployeeEditorPanel
+          open
+          employee={{
+            id: editingEmployee.id,
+            teamId,
+            organizationId,
+            name: String((editingEmployee.data as { name?: string }).name ?? ''),
+            instructions: String((editingEmployee.data as { instructions?: string }).instructions ?? ''),
+            modelPreference: String((editingEmployee.data as { modelPreference?: string }).modelPreference ?? 'GPT_4O_MINI') as 'GPT_4_1' | 'GPT_4O' | 'GPT_4O_MINI',
+          }}
+          onClose={() => setEditingEmployeeId(null)}
+          onSaved={() => window.location.reload()}
+        />
+      ) : null}
+    </>
   );
 }

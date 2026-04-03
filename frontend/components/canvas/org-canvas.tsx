@@ -5,20 +5,36 @@ import ReactFlow, { addEdge, Background, Connection, Controls, Edge, MarkerType,
 import 'reactflow/dist/style.css';
 import { EdgeType } from '@prisma/client';
 import { TeamNode } from '@/components/canvas/team-node';
-import { PropertiesPanel } from '@/components/properties-panel';
+import { TeamEditorPanel } from '@/components/team-editor-panel';
 import { Button } from '@/components/ui/button';
 
 const nodeTypes = {
-  team: ({ data, selected }: { data: { name: string }; selected: boolean }) => <TeamNode name={data.name} selected={selected} />,
+  team: ({ id, data, selected }: { id: string; data: { name: string; onEdit?: () => void }; selected: boolean }) => (
+    <TeamNode teamId={id} name={data.name} selected={selected} onEdit={data.onEdit} />
+  ),
 };
 
 export function OrgCanvas({ initialNodes, initialEdges, organizationId }: { initialNodes: Node[]; initialEdges: Edge[]; organizationId: string }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const visibleNodes = useMemo(() => nodes.filter((n) => String((n.data as { name?: string }).name ?? '').toLowerCase().includes(search.toLowerCase())), [nodes, search]);
+  const visibleNodes = useMemo(
+    () =>
+      nodes
+        .filter((n) => String((n.data as { name?: string }).name ?? '').toLowerCase().includes(search.toLowerCase()))
+        .map((n) => ({
+          ...n,
+          data: {
+            ...(n.data as object),
+            onEdit: () => setEditingTeamId(n.id),
+          },
+          selected: n.id === selectedNodeId,
+        })),
+    [nodes, search, selectedNodeId],
+  );
 
   const onConnect = async (connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -31,15 +47,13 @@ export function OrgCanvas({ initialNodes, initialEdges, organizationId }: { init
     await fetch('/api/teams', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamId: node.id, positionX: node.position.x, positionY: node.position.y }) });
   };
 
-  const selectedEntity = selectedNode
-    ? ({ kind: 'team', id: selectedNode.id, organizationId, ...(selectedNode.data as object) } as never)
-    : undefined;
-
-  const selectedEdges = selectedNode ? edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id).map((e) => ({ id: e.id, label: e.label as string | null, edgeType: ((e.data as { edgeType?: EdgeType } | undefined)?.edgeType ?? EdgeType.HIERARCHY), description: '', conditionNote: '' })) : [];
+  const editingTeam = editingTeamId
+    ? nodes.find((n) => n.id === editingTeamId)
+    : null;
 
   return (
-    <div className="flex h-[70vh] overflow-hidden rounded border">
-      <div className="relative flex-1">
+    <>
+      <div className="relative h-[70vh] overflow-hidden rounded border">
         <div className="absolute left-2 top-2 z-10 flex gap-2">
           <input className="rounded border bg-white px-2 py-1 text-xs" placeholder="Search teams" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Button type="button" onClick={async () => {
@@ -56,7 +70,7 @@ export function OrgCanvas({ initialNodes, initialEdges, organizationId }: { init
           onNodesChange={() => {}}
           onEdgesChange={() => {}}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelectedNode(node)}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onNodeDragStop={onNodeDragStop}
           fitView
         >
@@ -65,7 +79,19 @@ export function OrgCanvas({ initialNodes, initialEdges, organizationId }: { init
           <Background />
         </ReactFlow>
       </div>
-      <PropertiesPanel entity={selectedEntity} edges={selectedEdges} refresh={() => window.location.reload()} />
-    </div>
+      {editingTeam ? (
+        <TeamEditorPanel
+          open
+          team={{
+            id: editingTeam.id,
+            organizationId,
+            name: String((editingTeam.data as { name?: string }).name ?? ''),
+            instructions: String((editingTeam.data as { instructions?: string }).instructions ?? ''),
+          }}
+          onClose={() => setEditingTeamId(null)}
+          onSaved={() => window.location.reload()}
+        />
+      ) : null}
+    </>
   );
 }

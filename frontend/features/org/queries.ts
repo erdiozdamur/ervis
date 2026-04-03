@@ -11,7 +11,7 @@ export async function listOrganizationsForUser(userId: string) {
 export async function getOrganizationGraph(organizationId: string) {
   const [organization, teams, edges] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId } }),
-    prisma.team.findMany({ where: { organizationId, status: 'ACTIVE' } }),
+    prisma.team.findMany({ where: { organizationId } }),
     prisma.teamEdge.findMany({ where: { organizationId } }),
   ]);
   return { organization, teams, edges };

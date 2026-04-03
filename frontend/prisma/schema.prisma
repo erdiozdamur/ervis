@@ -110,13 +110,7 @@ model Team {
   organizationId  String
   parentTeamId    String?
   name            String
-  description     String           @default("")
-  status          EntityStatus     @default(ACTIVE)
-  tags            String[]         @default([])
-  rolePurpose     String           @default("")
-  attributes      Json             @default("{}")
   instructions    String           @default("")
-  context         String           @default("")
   positionX       Float            @default(0)
   positionY       Float            @default(0)
   organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -140,16 +134,8 @@ model Employee {
   teamId           String
   managerId        String?
   name             String
-  description      String               @default("")
-  status           EntityStatus         @default(ACTIVE)
-  tags             String[]             @default([])
-  title            String?
-  specialization   String               @default("")
   modelPreference  ModelPreference      @default(GPT_4O_MINI)
-  active           Boolean              @default(true)
-  attributes       Json                 @default("{}")
   instructions     String               @default("")
-  context          String               @default("")
   positionX        Float                @default(0)
   positionY        Float                @default(0)
   organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
