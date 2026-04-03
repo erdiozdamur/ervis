@@ -55,7 +55,7 @@ services:
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
       AUTH_TRUST_HOST: "${AUTH_TRUST_HOST:-true}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost}"
-      AUTH_URL: "${AUTH_URL:-http://localhost}"
+      AUTH_URL: "${AUTH_URL:-}"
       POSTGRES_USER: "${POSTGRES_USER:-ervis}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ervis}"
       POSTGRES_DB: "${POSTGRES_DB:-ervis}"
