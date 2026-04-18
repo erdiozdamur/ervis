@@ -1,4 +1,6 @@
+import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { PrismaClient } from '@prisma/client';
 import { applyCommonEnvAliases, isEnabled, loadRuntimeEnv } from './env-bootstrap.mjs';
 
 const TRANSITIONAL_AUTH_MODEL_NAMES = new Set([
@@ -19,6 +21,21 @@ const BLOCKING_LEGACY_MODEL_NAMES = new Set([
   'Team',
   'TeamCapability',
   'TeamEdge',
+]);
+
+const CURRENT_MANAGED_TABLE_NAMES = new Set([
+  'AppMeta',
+  'auth_accounts',
+  'auth_sessions',
+  'auth_verification_tokens',
+  'food_catalog_entries',
+  'meal_analysis_runs',
+  'meal_input_assets',
+  'meal_items',
+  'meals',
+  'nutrition_cache_entries',
+  'user_profiles',
+  'users',
 ]);
 
 loadRuntimeEnv(process.env.NODE_ENV ?? 'development');
@@ -68,12 +85,121 @@ function resetPublicSchema() {
   }
 }
 
+function listMigrationNames() {
+  return readdirSync('prisma/migrations', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function markAllMigrationsApplied() {
+  const migrationNames = listMigrationNames();
+
+  if (migrationNames.length === 0) {
+    console.error('[migrator] No Prisma migrations were found to baseline.');
+    process.exit(1);
+  }
+
+  console.warn(
+    `[migrator] Current schema matches the managed app footprint but Prisma migration history is missing. Marking ${migrationNames.length} migrations as applied.`,
+  );
+
+  for (const migrationName of migrationNames) {
+    const status = runPrisma(['migrate', 'resolve', '--applied', migrationName]);
+
+    if (status !== 0) {
+      console.error(`[migrator] Failed to mark migration ${migrationName} as applied.`);
+      process.exit(status);
+    }
+  }
+}
+
+function isCurrentManagedSchemaWithoutHistory(tableNames) {
+  const visibleTables = tableNames.filter((name) => name !== '_prisma_migrations');
+
+  if (visibleTables.length !== CURRENT_MANAGED_TABLE_NAMES.size) {
+    return false;
+  }
+
+  return visibleTables.every((tableName) => CURRENT_MANAGED_TABLE_NAMES.has(tableName));
+}
+
+async function inspectDatabaseState() {
+  const prisma = new PrismaClient();
+
+  try {
+    const tableRows = await prisma.$queryRawUnsafe(`
+      SELECT tablename
+      FROM pg_catalog.pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `);
+
+    const tableNames = tableRows.map((row) => row.tablename);
+    const hasMigrationTable = tableNames.includes('_prisma_migrations');
+    let failedMigrationNames = [];
+
+    if (hasMigrationTable) {
+      const migrationRows = await prisma.$queryRawUnsafe(`
+        SELECT migration_name, finished_at, rolled_back_at
+        FROM "_prisma_migrations"
+        ORDER BY started_at ASC
+      `);
+
+      failedMigrationNames = migrationRows
+        .filter((row) => row.finished_at === null && row.rolled_back_at === null)
+        .map((row) => row.migration_name);
+    }
+
+    return {
+      tableNames,
+      hasMigrationTable,
+      failedMigrationNames,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 if (!process.env.DATABASE_URL) {
   console.error('[migrator] DATABASE_URL is required.');
   process.exit(1);
 }
 
 const allowDestructiveReset = isEnabled(process.env.ALLOW_DESTRUCTIVE_BASELINE_RESET, false);
+
+const databaseState = await inspectDatabaseState();
+
+if (databaseState.tableNames.length === 0) {
+  console.log('[migrator] No public tables detected before migration.');
+} else {
+  console.log(`[migrator] Existing public tables: ${databaseState.tableNames.join(', ')}`);
+}
+
+if (!databaseState.hasMigrationTable && isCurrentManagedSchemaWithoutHistory(databaseState.tableNames)) {
+  markAllMigrationsApplied();
+}
+
+if (databaseState.failedMigrationNames.length > 0) {
+  if (!allowDestructiveReset) {
+    console.error(
+      `[migrator] Found failed Prisma migration state (${databaseState.failedMigrationNames.join(
+        ', ',
+      )}) and ALLOW_DESTRUCTIVE_BASELINE_RESET is disabled.`,
+    );
+    console.error(
+      '[migrator] This database likely came from a partially completed deploy. For disposable environments, set ALLOW_DESTRUCTIVE_BASELINE_RESET=true for one deploy or clear the Postgres volume.',
+    );
+    process.exit(1);
+  }
+
+  console.warn(
+    `[migrator] Found failed Prisma migration state (${databaseState.failedMigrationNames.join(
+      ', ',
+    )}); resetting public schema because destructive reset is explicitly enabled.`,
+  );
+  resetPublicSchema();
+}
 
 console.log('[migrator] Inspecting database schema for legacy models...');
 const introspection = runPrismaCapture(['db', 'pull', '--print', '--schema', 'prisma/schema.prisma']);

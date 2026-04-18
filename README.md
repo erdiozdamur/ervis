@@ -167,6 +167,8 @@ The root [docker-compose.yml](/Users/erdi/Documents/repository/ervis/docker-comp
 - frontend startup keeps `APPLY_MIGRATIONS_ON_STARTUP=false` so migrations are not run twice
 - frontend healthcheck uses `/healthz`
 - both `migrator` and frontend use the same `DATABASE_URL` shape, including `?schema=public`
+- if the database already matches the current managed app schema but Prisma history is missing, `migrator` will non-destructively mark the shipped migrations as applied before continuing
+- if Prisma detects a failed historical migration entry, deployment stays blocked unless you explicitly allow a destructive reset
 
 If a throwaway deployment environment already contains an old incompatible schema and you intentionally want to wipe it, set:
 
