@@ -1,0 +1,1 @@
+ALTER TYPE "MealInputAssetType" ADD VALUE IF NOT EXISTS 'AUDIO';

@@ -36,6 +36,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    environment:
+      APP_ENV: "${APP_ENV:-development}"
+      DATABASE_URL: "${DATABASE_URL:-}"
+      POSTGRES_USER: "${POSTGRES_USER:-ervis}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ervis}"
+      POSTGRES_DB: "${POSTGRES_DB:-ervis}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
+      BACKEND_CORS_ORIGINS: "${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:80,http://127.0.0.1:80}"
     ports:
       - target: 8000
         published: "${BACKEND_HOST_PORT:-0}"
@@ -56,11 +66,15 @@ services:
     environment:
       PORT: "3000"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}"
+      AUTH_SECRET: "${AUTH_SECRET:-}"
       NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:-}"
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
       AUTH_TRUST_HOST: "${AUTH_TRUST_HOST:-true}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost}"
+      AUTH_SESSION_MAX_AGE_DAYS: "${AUTH_SESSION_MAX_AGE_DAYS:-30}"
       AUTH_URL: "${AUTH_URL:-}"
+      APP_TIME_ZONE: "${APP_TIME_ZONE:-Europe/Istanbul}"
+      TZ: "${TZ:-Europe/Istanbul}"
       POSTGRES_USER: "${POSTGRES_USER:-ervis}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ervis}"
       POSTGRES_DB: "${POSTGRES_DB:-ervis}"

@@ -1,38 +1,54 @@
-import { ButtonHTMLAttributes } from 'react';
-import { cn } from '@/lib/utils';
+import type { ButtonHTMLAttributes } from 'react';
+import { cn } from '@/lib/utils/cn';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
+const variantStyles = {
+  primary:
+    'bg-slate-950 text-white shadow-soft hover:bg-slate-800 focus-visible:outline-cyan-600 disabled:bg-slate-300 disabled:text-slate-500',
+  secondary:
+    'border border-white/80 bg-white/92 text-slate-900 shadow-soft hover:bg-white focus-visible:outline-cyan-600 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400',
+  soft: 'border border-white/70 bg-white/72 text-slate-900 shadow-soft hover:bg-white/88 focus-visible:outline-cyan-600 disabled:bg-white/50 disabled:text-slate-400',
+  ghost:
+    'bg-transparent text-slate-700 hover:bg-white/70 focus-visible:outline-cyan-600 disabled:text-slate-400',
+} as const;
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+const sizeStyles = {
+  sm: 'h-11 rounded-[20px] px-4 text-sm',
+  md: 'h-12 rounded-[22px] px-4 text-sm',
+  lg: 'h-14 rounded-[24px] px-5 text-base',
+  icon: 'h-11 w-11 rounded-[20px] text-sm',
+} as const;
+
+type ButtonStyleOptions = {
+  variant?: keyof typeof variantStyles;
+  size?: keyof typeof sizeStyles;
+  fullWidth?: boolean;
+  className?: string;
 };
 
-const VARIANT_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-gradient-to-br from-cyan-500 to-sky-500 text-white shadow-[0_10px_28px_-14px_rgba(14,165,233,0.9)] hover:brightness-110',
-  secondary: 'bg-white/10 text-slate-100 ring-1 ring-white/20 hover:bg-white/16',
-  ghost: 'bg-transparent text-slate-300 ring-1 ring-transparent hover:bg-white/10 hover:text-white',
-  danger: 'bg-rose-500/90 text-white hover:bg-rose-500',
-};
-
-const SIZE_STYLES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-xs',
-  md: 'h-10 px-4 text-sm',
-  lg: 'h-11 px-5 text-sm',
-  icon: 'h-10 w-10 p-0',
-};
-
-export function Button({ className, variant = 'primary', size = 'md', ...props }: ButtonProps) {
-  return (
-    <button
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50',
-        VARIANT_STYLES[variant],
-        SIZE_STYLES[size],
-        className,
-      )}
-      {...props}
-    />
+export function buttonStyles({
+  variant = 'primary',
+  size = 'lg',
+  fullWidth = false,
+  className,
+}: ButtonStyleOptions = {}) {
+  return cn(
+    'inline-flex touch-manipulation items-center justify-center gap-2 font-semibold transition duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99]',
+    variantStyles[variant],
+    sizeStyles[size],
+    fullWidth ? 'w-full' : undefined,
+    className,
   );
+}
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & ButtonStyleOptions;
+
+export function Button({
+  className,
+  variant = 'primary',
+  size = 'lg',
+  fullWidth = false,
+  type = 'button',
+  ...props
+}: ButtonProps) {
+  return <button type={type} className={buttonStyles({ variant, size, fullWidth, className })} {...props} />;
 }

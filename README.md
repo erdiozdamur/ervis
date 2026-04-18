@@ -1,107 +1,191 @@
-# Ervis SaaS Builder (Current Phase)
+# Ervis
 
-## What now works
-- Full CRUD style flows for Organization, Team, Employee (create + update + archive).
-- Canvas-first creation for teams/employees plus properties inspector editing.
-- Context source management with inheritance visualization.
-- Capability registry + assignment at team and employee level.
-- Edge semantics with typed edges and editable metadata.
-- Expanded audit log events and in-panel filtering.
-- Tightened server-side ownership checks for org/team/employee/context/capability/edge APIs.
-- Authentication with email/password credentials plus optional Google OAuth.
+Production-minded, mobile-first calorie tracking app built with Next.js, TypeScript, Prisma, PostgreSQL, and a draft-first AI meal workflow.
 
-## Authentication
-### Supported sign-in flows
-- **Email/password registration** at `/register`.
-- **Email/password login** at `/login`.
-- **Google login** at `/login` only when Google OAuth env variables are configured.
+## Local development
 
-### Auth behavior and safety
-- Passwords are hashed with Node.js `crypto.scrypt` + per-user random salt before persistence.
-- Password hashes are stored in `User.passwordHash` and never returned from the register API.
-- Public registration always creates users with default role `USER`; admin bootstrap remains separate via `ADMIN_EMAIL` seed/upsert flow.
-- Existing session handling stays in Auth.js with Prisma adapter and `database` sessions.
-- Existing role propagation (`session.user.role`) remains intact.
+The safest local path is to run the app from `frontend/` and use the local PostgreSQL service defined in `frontend/docker-compose.yml`.
+That local compose stack is named `ervis-local`, so it stays clearly separate from the root deployment-oriented `ervis` stack.
 
-### Required and optional environment variables
-#### Required for app auth/session
+Recommended local rule:
+
+- Use `frontend/.env` as the source of truth for local app/database settings.
+- Use `frontend/docker-compose.yml` for the local Postgres service.
+- Run the backend locally from the repo root with `./scripts/run-local-backend.sh` when you need backend endpoints.
+- Treat the root `docker-compose.yml` and root `.env` as deployment-oriented, not as the recommended local app workflow.
+
+### 1. Prepare env
+
+```bash
+cd frontend
+cp .env.example .env
+```
+
+Notes:
+
+- `DATABASE_URL` in `.env.example` already points to the local Postgres container on `localhost:5432`.
+- `APP_TIME_ZONE` and `TZ` default to `Europe/Istanbul`.
+- `OPENAI_API_KEY` is optional for basic local UI testing, but needed for live transcription / provider-backed AI calls.
+
+### 2. Start the local database
+
+```bash
+cd frontend
+npm run db:start
+```
+
+If you already have an old local database volume from a previous iteration and migrations complain about a legacy schema, reset only the local frontend stacks (`ervis-local` and the older `frontend` local stack) with:
+
+```bash
+cd frontend
+npm run db:reset:local
+```
+
+Then start Postgres again and re-run migrations.
+
+### 3. Apply Prisma migrations
+
+```bash
+cd frontend
+npm run db:migrate:deploy
+```
+
+### 4. Start the app
+
+```bash
+cd frontend
+npm run dev
+```
+
+The app will run at:
+
+- `http://localhost:3000`
+- health check: `http://localhost:3000/healthz`
+
+### One-command local start
+
+```bash
+cd frontend
+npm run dev:local
+```
+
+This starts Postgres, applies migrations, and launches Next.js dev mode.
+
+### Start the backend locally
+
+When you want the Python backend available during local development:
+
+```bash
+cd /Users/erdi/Documents/repository/ervis
+./scripts/run-local-backend.sh
+```
+
+Backend endpoints:
+
+- `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+
+Important:
+
+- The current frontend signup/login flow uses local Next.js auth routes and does not depend on the Python backend.
+- The backend still points to the same local Postgres target as the frontend local workflow by preferring `frontend/.env` when run locally.
+- If port `8000` is already occupied by the old Docker backend, stop it first with `docker stop ervis-backend-1`.
+
+## Useful local commands
+
+```bash
+cd frontend
+npm test
+npm run lint
+npm run typecheck
+npm run build
+```
+
+```bash
+cd frontend
+npm run db:logs
+npm run db:down
+npm run db:stop
+```
+
+## Docker and deployment readiness
+
+The deployment-safe path is:
+
+- build the frontend image from `frontend/Dockerfile`
+- provide runtime env vars from the platform
+- let startup checks fail fast when required production env is missing
+- keep migrations explicit with `APPLY_MIGRATIONS_ON_STARTUP`
+- use `/healthz` for container liveness
+
+### Required production env
+
 - `DATABASE_URL`
-- One of: `AUTH_SECRET` or `NEXTAUTH_SECRET` (or legacy `JWT_SECRET_KEY` via startup script)
+- `AUTH_SECRET`
+- `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL`
 
-#### Optional for URL configuration
-- `AUTH_URL` or `NEXTAUTH_URL`
+### Recommended production env
 
-#### Optional for Google provider
-Google login is enabled only if both values are present (either naming style):
-- `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET`
-- or `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+- `APP_TIME_ZONE=Europe/Istanbul`
+- `TZ=Europe/Istanbul`
+- `APPLY_MIGRATIONS_ON_STARTUP=true`
+- `WAIT_FOR_DATABASE_ON_STARTUP=true`
 
-If Google vars are missing, the app still starts and credentials auth works normally.
+### Startup behavior
 
-#### Optional bootstrap/admin seed
-- `ADMIN_EMAIL` (needed for seeding an admin user via `prisma/seed.ts`)
+`npm run start:prod` now does the following in order:
 
-## CRUD flows
-- **Organization**: create from dashboard, edit/archive from org cards.
-- **Team**: create from organization canvas, edit/archive in properties panel.
-- **Employee**: create from team canvas, edit/archive in properties panel.
-- All mutation endpoints validate payloads with **Zod**.
+1. Loads env in a predictable layered order for the current `NODE_ENV`
+2. Normalizes auth/app URL aliases
+3. Validates required production env vars
+4. Waits for database connectivity when enabled
+5. Runs `prisma migrate deploy` when `APPLY_MIGRATIONS_ON_STARTUP=true`
+6. Starts Next.js on `0.0.0.0:$PORT`
 
-## Context inheritance rules
-- `organization` context applies to teams and employees.
-- `team` context applies to employees on that team.
-- `employee` context is direct only.
-- Inspector labels context as:
-  - inherited from organization
-  - inherited from team
-  - direct to employee
+### Healthcheck strategy
 
-## Capability assignment rules
-- Capability registry is seeded (`web_search`, `summarize_text`, `classify_content`, `route_task`, `write_analysis`, `review_output`, `send_email`).
-- Team can define default capabilities.
-- Employee can define direct capabilities.
-- Effective employee capabilities = direct employee caps + optional team defaults (resolved via domain service).
+- `GET /healthz` and `GET /api/health` both return a lightweight JSON payload
+- Dockerfile includes a container-level healthcheck against `/healthz`
+- `frontend/docker-compose.yml` uses the same route for service health
+- health payload exposes environment plus whether DB/auth env is configured, without forcing a DB query on every probe
 
-## Edge types
-Supported edge enum values for team and employee edges:
-- `HIERARCHY`
-- `HANDOFF`
-- `APPROVAL`
-- `FEEDBACK_LOOP`
-- `ESCALATION`
+### Dokploy-style deployment notes
 
-Each edge supports label, description, condition note and can be edited/deleted.
+- Prefer setting env vars in Dokploy instead of baking any `.env.production` file into the image
+- Keep `AUTH_SECRET` platform-managed and non-placeholder
+- If the database is managed separately, point `DATABASE_URL` directly at that service
+- If migrations should run during release startup, keep `APPLY_MIGRATIONS_ON_STARTUP=true`
+- If migrations are handled by a separate release job, set `APPLY_MIGRATIONS_ON_STARTUP=false`
 
-## Access control rules
-- Users can only access organizations they own.
-- Team/employee/context/edge/capability access is validated server-side through ownership traversal.
-- Admin-only settings page remains protected.
+## Recommended local startup sequence
 
-## Seed data included
-- 1 organization
-- Multiple teams
-- Hierarchical team edges
-- Multiple employees
-- Employee workflow edges
-- Context inheritance examples (org/team/employee)
-- Capability assignments (team defaults + employee direct)
+```bash
+cd /Users/erdi/Documents/repository/ervis/frontend
+npm run db:start
+npm run db:migrate:deploy
+npm run dev
+```
 
-## Still unimplemented
-- Runtime OpenAI execution/orchestration.
-- Full document embedding/vector ingestion pipeline.
-- Rich modal/sheet design system (current UI is pragmatic inline forms).
-- Full automated test coverage across all APIs.
+In a second terminal:
 
-## Prisma migration recovery (PostgreSQL)
-- The initial migration (`202604020001_init`) creates the `vector` extension, so PostgreSQL must include `pgvector`.
-- `docker-compose.yml` uses `pgvector/pgvector:pg16` and runs migrations in a one-shot `migrator` service before the frontend starts.
-- The frontend startup script skips `migrate deploy` by default to avoid restart loops. Set `APPLY_MIGRATIONS_ON_STARTUP=true` only when intentionally running migrations inside app startup.
+```bash
+cd /Users/erdi/Documents/repository/ervis
+./scripts/run-local-backend.sh
+```
 
-If migration history is in a failed state (`P3009`) and data must be preserved:
-1. Inspect failed entries:
-   - `SELECT migration_name, started_at, finished_at, rolled_back_at, logs FROM "_prisma_migrations" ORDER BY started_at DESC;`
-2. Check whether migration SQL effects exist in the schema.
-3. Resolve based on reality:
-   - Mark rolled back if SQL did not apply: `npx prisma migrate resolve --rolled-back 202604020001_init`
-   - Mark applied if SQL already exists: `npx prisma migrate resolve --applied 202604020001_init`
-4. Re-run deploy: `npx prisma migrate deploy`
+## Local reset sequence
+
+```bash
+cd /Users/erdi/Documents/repository/ervis/frontend
+npm run db:reset:local
+npm run db:start
+npm run db:migrate:deploy
+```
+
+## Local verification checklist
+
+1. `http://localhost:3000/healthz` returns `200`.
+2. `http://127.0.0.1:8000/healthz` returns `200` if the backend is running.
+3. `http://127.0.0.1:8000/readyz` returns `200` if the backend can reach the local auth tables.
+4. Opening `http://localhost:3000/` sends signed-out users to sign-in and signed-in users to `/app`.
+5. Signing up through the frontend creates a row in the local `users` table on the `ervis-local` Postgres container.

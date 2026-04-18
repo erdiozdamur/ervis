@@ -1,0 +1,76 @@
+name: ervis-local
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-ervis}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ervis}"
+      POSTGRES_DB: "${POSTGRES_DB:-ervis}"
+      TZ: "${TZ:-Europe/Istanbul}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ervis} -d ${POSTGRES_DB:-ervis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: "production"
+      PORT: "3000"
+      TZ: "${TZ:-Europe/Istanbul}"
+      APP_TIME_ZONE: "${APP_TIME_ZONE:-Europe/Istanbul}"
+      NEXT_PUBLIC_APP_URL: "${NEXT_PUBLIC_APP_URL:-http://localhost:3000}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}?schema=public"
+      AUTH_SECRET: "${AUTH_SECRET:-}"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      AUTH_TRUST_HOST: "${AUTH_TRUST_HOST:-true}"
+      AUTH_SESSION_MAX_AGE_DAYS: "${AUTH_SESSION_MAX_AGE_DAYS:-30}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      AI_PROVIDER: "${AI_PROVIDER:-openai}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4.1-mini}"
+      OPENAI_TRANSCRIPTION_MODEL: "${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}"
+      AI_ANALYSIS_PROMPT_VERSION: "${AI_ANALYSIS_PROMPT_VERSION:-meal-intake-v1}"
+      MEAL_ANALYSIS_STAGE1_MODEL: "${MEAL_ANALYSIS_STAGE1_MODEL:-gpt-4.1-mini}"
+      MEAL_ANALYSIS_STAGE2_MODEL: "${MEAL_ANALYSIS_STAGE2_MODEL:-gpt-4.1-mini}"
+      MEAL_ASSET_STORAGE_DRIVER: "${MEAL_ASSET_STORAGE_DRIVER:-local}"
+      MEAL_ASSET_LOCAL_DIR: "${MEAL_ASSET_LOCAL_DIR:-.uploads/meal-assets}"
+      MEAL_ASSET_MAX_FILE_SIZE_MB: "${MEAL_ASSET_MAX_FILE_SIZE_MB:-12}"
+      APPLY_MIGRATIONS_ON_STARTUP: "${APPLY_MIGRATIONS_ON_STARTUP:-true}"
+      WAIT_FOR_DATABASE_ON_STARTUP: "${WAIT_FOR_DATABASE_ON_STARTUP:-true}"
+      STARTUP_DB_WAIT_TIMEOUT_MS: "${STARTUP_DB_WAIT_TIMEOUT_MS:-60000}"
+      STARTUP_DB_WAIT_INTERVAL_MS: "${STARTUP_DB_WAIT_INTERVAL_MS:-2000}"
+      ALLOW_DESTRUCTIVE_BASELINE_RESET: "${ALLOW_DESTRUCTIVE_BASELINE_RESET:-false}"
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - meal_asset_uploads:/app/.uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const port=process.env.PORT||'3000'; fetch('http://127.0.0.1:'+port+'/healthz').then((response)=>{if(!response.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  meal_asset_uploads:

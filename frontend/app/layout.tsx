@@ -1,22 +1,34 @@
+import type { Metadata } from 'next';
+import { Fraunces, Manrope } from 'next/font/google';
 import './globals.css';
-import { Manrope, Space_Grotesk } from 'next/font/google';
-import { Providers } from '@/components/providers';
+import { APP_DESCRIPTION, APP_NAME } from '@/lib/config/app';
 
-const manrope = Manrope({
+const sans = Manrope({
   subsets: ['latin'],
   variable: '--font-sans',
+  display: 'swap',
 });
 
-const spaceGrotesk = Space_Grotesk({
+const display = Fraunces({
   subsets: ['latin'],
   variable: '--font-display',
+  display: 'swap',
 });
+
+export const metadata: Metadata = {
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
+  description: APP_DESCRIPTION,
+  applicationName: APP_NAME,
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`${manrope.variable} ${spaceGrotesk.variable}`}>
-        <Providers>{children}</Providers>
+    <html lang="en" className="h-full">
+      <body className={`${sans.variable} ${display.variable} min-h-full bg-app text-slate-950 antialiased`}>
+        {children}
       </body>
     </html>
   );

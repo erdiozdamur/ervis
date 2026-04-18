@@ -1,259 +1,96 @@
 generator client {
-  provider        = "prisma-client-js"
-  binaryTargets   = ["native", "debian-openssl-3.0.x"]
-  previewFeatures = ["postgresqlExtensions"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [vector]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
-enum EntityStatus {
-  ACTIVE
+enum MealStatus {
+  DRAFT
+  CONFIRMED
   ARCHIVED
 }
 
-enum ContextOwnerType {
-  ORGANIZATION
-  TEAM
-  EMPLOYEE
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+  OTHER
 }
 
-enum ContextSourceType {
+enum MealInputAssetType {
+  IMAGE
+  AUDIO
   TEXT
-  DOCUMENT_REFERENCE
-  NOTE
+  BARCODE
 }
 
-enum ModelPreference {
-  GPT_4_1
-  GPT_4O
-  GPT_4O_MINI
+enum MealAnalysisStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
 }
 
-enum EdgeType {
-  HIERARCHY
-  HANDOFF
-  APPROVAL
-  FEEDBACK_LOOP
-  ESCALATION
+enum SharedNutritionSource {
+  OFFICIAL_DATASET
+  USER_CONFIRMED
+  AI_ESTIMATE
 }
 
-enum AuditAction {
-  ORGANIZATION_CREATED
-  ORGANIZATION_UPDATED
-  TEAM_CREATED
-  TEAM_UPDATED
-  EMPLOYEE_CREATED
-  EMPLOYEE_UPDATED
-  EDGE_CREATED
-  EDGE_UPDATED
-  EDGE_DELETED
-  CONTEXT_SOURCE_CREATED
-  CONTEXT_SOURCE_UPDATED
-  CONTEXT_SOURCE_DELETED
-  CAPABILITY_ASSIGNED
-  CAPABILITY_REMOVED
-  ENTITY_ARCHIVED
-  ENTITY_DELETED
-  NODE_MOVED
+enum ProfileSex {
+  FEMALE
+  MALE
 }
 
+enum ProfileGoalType {
+  LOSE_FAT
+  MAINTAIN
+  GAIN_MUSCLE
+}
+
+enum ProfileActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  ACTIVE
+  VERY_ACTIVE
+}
+
+model AppMeta {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Core auth user record. All user-owned product data hangs off this model.
 model User {
-  id             String                @id @default(cuid())
-  email          String                @unique
-  name           String?
-  image          String?
-  passwordHash   String?
-  role           UserRole              @default(USER)
-  organizations  Organization[]
-  accounts       Account[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  employeeCaps   EmployeeCapability[]
-  teamCaps       TeamCapability[]
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id               String            @id @default(cuid())
+  name             String?
+  email            String            @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  profile          UserProfile?
+  meals            Meal[]
+  mealInputAssets  MealInputAsset[]
+  mealAnalysisRuns MealAnalysisRun[]
+  accounts         Account[]
+  sessions         Session[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@map("users")
 }
 
-model Organization {
-  id            String           @id @default(cuid())
-  ownerId       String
-  name          String
-  description   String           @default("")
-  status        EntityStatus     @default(ACTIVE)
-  tags          String[]         @default([])
-  attributes    Json             @default("{}")
-  instructions  String           @default("")
-  context       String           @default("")
-  teams         Team[]
-  employees     Employee[]
-  teamEdges     TeamEdge[]
-  contextSource ContextSource[]
-  auditLogs     AuditLog[]
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-
-  @@index([ownerId])
-}
-
-model Team {
-  id              String           @id @default(cuid())
-  organizationId  String
-  parentTeamId    String?
-  name            String
-  instructions    String           @default("")
-  positionX       Float            @default(0)
-  positionY       Float            @default(0)
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parentTeam      Team?            @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
-  childTeams      Team[]           @relation("TeamHierarchy")
-  employees       Employee[]
-  sourceEdges     TeamEdge[]       @relation("TeamEdgeSource")
-  targetEdges     TeamEdge[]       @relation("TeamEdgeTarget")
-  employeeEdges   EmployeeEdge[]
-  capabilities    TeamCapability[]
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  @@index([organizationId])
-  @@index([parentTeamId])
-}
-
-model Employee {
-  id               String               @id @default(cuid())
-  organizationId   String
-  teamId           String
-  managerId        String?
-  name             String
-  modelPreference  ModelPreference      @default(GPT_4O_MINI)
-  instructions     String               @default("")
-  positionX        Float                @default(0)
-  positionY        Float                @default(0)
-  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team             Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  manager          Employee?            @relation("EmployeeHierarchy", fields: [managerId], references: [id])
-  directReports    Employee[]           @relation("EmployeeHierarchy")
-  sourceEdges      EmployeeEdge[]       @relation("EmployeeEdgeSource")
-  targetEdges      EmployeeEdge[]       @relation("EmployeeEdgeTarget")
-  capabilities     EmployeeCapability[]
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-
-  @@index([organizationId])
-  @@index([teamId])
-}
-
-model Capability {
-  id           String               @id @default(cuid())
-  key          String               @unique
-  label        String
-  description  String?
-  employees    EmployeeCapability[]
-  teams        TeamCapability[]
-  createdAt    DateTime             @default(now())
-}
-
-model EmployeeCapability {
-  id            String      @id @default(cuid())
-  employeeId    String
-  capabilityId  String
-  grantedById   String
-  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  capability    Capability  @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
-  grantedBy     User        @relation(fields: [grantedById], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now())
-
-  @@unique([employeeId, capabilityId])
-}
-
-model TeamCapability {
-  id            String      @id @default(cuid())
-  teamId         String
-  capabilityId   String
-  grantedById    String
-  team           Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  capability     Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
-  grantedBy      User       @relation(fields: [grantedById], references: [id], onDelete: Cascade)
-  createdAt      DateTime   @default(now())
-
-  @@unique([teamId, capabilityId])
-}
-
-model TeamEdge {
-  id              String       @id @default(cuid())
-  organizationId  String
-  sourceTeamId    String
-  targetTeamId    String
-  edgeType        EdgeType     @default(HIERARCHY)
-  label           String?
-  description     String       @default("")
-  conditionNote   String       @default("")
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sourceTeam      Team         @relation("TeamEdgeSource", fields: [sourceTeamId], references: [id], onDelete: Cascade)
-  targetTeam      Team         @relation("TeamEdgeTarget", fields: [targetTeamId], references: [id], onDelete: Cascade)
-  createdAt       DateTime     @default(now())
-
-  @@index([organizationId])
-}
-
-model EmployeeEdge {
-  id               String       @id @default(cuid())
-  teamId           String
-  sourceEmployeeId String
-  targetEmployeeId String
-  edgeType         EdgeType     @default(HANDOFF)
-  label            String?
-  description      String       @default("")
-  conditionNote    String       @default("")
-  team             Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  sourceEmployee   Employee     @relation("EmployeeEdgeSource", fields: [sourceEmployeeId], references: [id], onDelete: Cascade)
-  targetEmployee   Employee     @relation("EmployeeEdgeTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
-  createdAt        DateTime     @default(now())
-
-  @@index([teamId])
-}
-
-model ContextSource {
-  id                String            @id @default(cuid())
-  organizationId    String
-  ownerType         ContextOwnerType
-  ownerId           String
-  title             String
-  type              ContextSourceType @default(TEXT)
-  content           String
-  embedding         Unsupported("vector")?
-  metadata          Json              @default("{}")
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-
-  @@index([organizationId, ownerType])
-}
-
-model AuditLog {
-  id              String        @id @default(cuid())
-  organizationId  String?
-  actorId         String
-  action          AuditAction
-  subjectType     String
-  subjectId       String
-  metadata        Json          @default("{}")
-  actor           User          @relation(fields: [actorId], references: [id], onDelete: Cascade)
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt       DateTime      @default(now())
-
-  @@index([organizationId, createdAt])
-}
-
+/// Reserved for auth provider connections so social login can be added later.
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -270,20 +107,212 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("auth_accounts")
 }
 
+/// Database-backed secure sessions for authenticated users.
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("auth_sessions")
 }
 
+/// Verification token storage for future email verification / recovery flows.
 model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
+  @@map("auth_verification_tokens")
+}
+
+/// One-to-one per-user app profile and preferences.
+model UserProfile {
+  userId                   String                @id
+  timeZone                 String                @default("Europe/Istanbul")
+  preferredLanguage        String?               @db.VarChar(16)
+  age                      Int?
+  sex                      ProfileSex?
+  heightCm                 Int?
+  weightKg                 Decimal?              @db.Decimal(5, 2)
+  goalType                 ProfileGoalType?
+  activityLevel            ProfileActivityLevel?
+  trainingFrequencyPerWeek Int?
+  dailyCalorieGoal         Int?
+  macroProteinGrams        Int?
+  macroCarbGrams           Int?
+  macroFatGrams            Int?
+  calculatorVersion        String?               @db.VarChar(32)
+  targetCalculatedAt       DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  user                     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+/// User-owned meal container. `mealDate` is the Europe/Istanbul-local day bucket used for grouping.
+model Meal {
+  id           String            @id @default(cuid())
+  userId       String
+  status       MealStatus        @default(DRAFT)
+  mealType     MealType          @default(OTHER)
+  title        String?           @db.VarChar(120)
+  notes        String?
+  timeZone     String            @default("Europe/Istanbul")
+  mealDate     DateTime          @db.Date
+  consumedAt   DateTime          @default(now())
+  confirmedAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items        MealItem[]
+  inputAssets  MealInputAsset[]
+  analysisRuns MealAnalysisRun[]
+
+  @@index([userId, mealDate, consumedAt])
+  @@index([userId, status, createdAt])
+  @@map("meals")
+}
+
+/// Itemized foods inside a meal, including AI drafts and user-confirmed edits.
+model MealItem {
+  id                    String               @id @default(cuid())
+  mealId                String
+  sortOrder             Int                  @default(0)
+  displayName           String               @db.VarChar(160)
+  quantityAmount        Decimal?             @db.Decimal(10, 2)
+  quantityUnit          String?              @db.VarChar(32)
+  gramsEstimate         Decimal?             @db.Decimal(10, 2)
+  calories              Decimal?             @db.Decimal(10, 2)
+  proteinGrams          Decimal?             @db.Decimal(10, 2)
+  carbGrams             Decimal?             @db.Decimal(10, 2)
+  fatGrams              Decimal?             @db.Decimal(10, 2)
+  fiberGrams            Decimal?             @db.Decimal(10, 2)
+  normalizedFoodEntryId String?
+  nutritionCacheEntryId String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  meal                  Meal                 @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  normalizedFoodEntry   FoodCatalogEntry?    @relation(fields: [normalizedFoodEntryId], references: [id], onDelete: SetNull)
+  nutritionCacheEntry   NutritionCacheEntry? @relation(fields: [nutritionCacheEntryId], references: [id], onDelete: SetNull)
+
+  @@index([mealId, sortOrder])
+  @@index([normalizedFoodEntryId])
+  @@index([nutritionCacheEntryId])
+  @@map("meal_items")
+}
+
+/// Raw user meal inputs such as photos, text, or barcodes that feed AI analysis.
+model MealInputAsset {
+  id            String             @id @default(cuid())
+  mealId        String
+  userId        String
+  assetType     MealInputAssetType
+  sortOrder     Int                @default(0)
+  textContent   String?
+  storageKey    String?            @db.VarChar(255)
+  mimeType      String?            @db.VarChar(128)
+  sha256        String?            @db.VarChar(128)
+  fileSizeBytes Int?
+  metadataJson  Json?
+  createdAt     DateTime           @default(now())
+  meal          Meal               @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([mealId, sortOrder])
+  @@index([userId, createdAt])
+  @@index([sha256])
+  @@map("meal_input_assets")
+}
+
+/// Tracks each AI analysis attempt, including cached/draft JSON before user confirmation.
+model MealAnalysisRun {
+  id                 String             @id @default(cuid())
+  mealId             String
+  userId             String
+  status             MealAnalysisStatus @default(QUEUED)
+  provider           String             @db.VarChar(64)
+  model              String             @db.VarChar(128)
+  promptVersion      String?            @db.VarChar(64)
+  requestFingerprint String             @db.VarChar(128)
+  requestJson        Json?
+  responseJson       Json?
+  draftResultJson    Json?
+  errorMessage       String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  meal               Meal               @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([mealId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([requestFingerprint])
+  @@map("meal_analysis_runs")
+}
+
+/// Shared, normalized food entries that can be reused by every user and linked from meal items.
+model FoodCatalogEntry {
+  id                    String                @id @default(cuid())
+  slug                  String                @unique @db.VarChar(191)
+  canonicalName         String                @db.VarChar(191)
+  brandName             String?               @db.VarChar(191)
+  source                SharedNutritionSource @default(OFFICIAL_DATASET)
+  externalSourceName    String?               @db.VarChar(64)
+  externalSourceId      String?               @db.VarChar(128)
+  defaultServingAmount  Decimal?              @db.Decimal(10, 2)
+  defaultServingUnit    String?               @db.VarChar(32)
+  calories              Decimal?              @db.Decimal(10, 2)
+  proteinGrams          Decimal?              @db.Decimal(10, 2)
+  carbGrams             Decimal?              @db.Decimal(10, 2)
+  fatGrams              Decimal?              @db.Decimal(10, 2)
+  fiberGrams            Decimal?              @db.Decimal(10, 2)
+  metadataJson          Json?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  mealItems             MealItem[]
+  nutritionCacheEntries NutritionCacheEntry[]
+
+  @@index([canonicalName])
+  @@index([externalSourceName, externalSourceId])
+  @@map("food_catalog_entries")
+}
+
+/// Shared nutrition cache for normalized or AI-estimated foods reused across all users.
+model NutritionCacheEntry {
+  id                    String                @id @default(cuid())
+  cacheKey              String                @unique @db.VarChar(191)
+  normalizedQueryText   String                @db.VarChar(191)
+  source                SharedNutritionSource @default(AI_ESTIMATE)
+  provider              String?               @db.VarChar(64)
+  normalizedFoodEntryId String?
+  servingAmount         Decimal?              @db.Decimal(10, 2)
+  servingUnit           String?               @db.VarChar(32)
+  calories              Decimal?              @db.Decimal(10, 2)
+  proteinGrams          Decimal?              @db.Decimal(10, 2)
+  carbGrams             Decimal?              @db.Decimal(10, 2)
+  fatGrams              Decimal?              @db.Decimal(10, 2)
+  fiberGrams            Decimal?              @db.Decimal(10, 2)
+  payloadJson           Json?
+  expiresAt             DateTime?
+  lastUsedAt            DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  normalizedFoodEntry   FoodCatalogEntry?     @relation(fields: [normalizedFoodEntryId], references: [id], onDelete: SetNull)
+  mealItems             MealItem[]
+
+  @@index([normalizedQueryText])
+  @@index([normalizedFoodEntryId])
+  @@index([expiresAt])
+  @@map("nutrition_cache_entries")
 }

@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
+.DS_Store
+.playwright-cli/
+services/__pycache__/
+services/.DS_Store
 .env
 .venv/
 node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/.env
+*.tsbuildinfo
