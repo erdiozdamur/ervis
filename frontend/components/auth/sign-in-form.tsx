@@ -61,14 +61,14 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
         });
 
         if (!result || result.error) {
-          setFormError('Email or password is incorrect. Please try again.');
+          setFormError('E-posta veya şifre hatalı.');
           return;
         }
 
         router.replace((result.url ?? AUTH_APP_PATH) as Route);
         router.refresh();
       } catch {
-        setFormError('Sign-in is unavailable right now. Confirm the local frontend server is running and try again.');
+        setFormError('Giriş şu anda kullanılamıyor. Tekrar dene.');
       }
     });
   }
@@ -78,10 +78,10 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
       footer={
         <BottomActionBar>
           <button type="submit" form="sign-in-form" className={buttonStyles({ fullWidth: true })} disabled={isPending}>
-            {isPending ? 'Signing in...' : 'Sign in'}
+            {isPending ? 'Giriş yapılıyor...' : 'Giriş yap'}
           </button>
           <Link href={signUpHref} className={buttonStyles({ variant: 'secondary', fullWidth: true })}>
-            Create account
+            Kayıt ol
           </Link>
         </BottomActionBar>
       }
@@ -89,18 +89,18 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
       <Stack gap="xl">
         <Card tone="hero" className="py-6">
           <div className="flex items-center justify-between gap-3">
-            <StatusPill tone="success">Welcome back</StatusPill>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Secure sign-in</p>
+            <StatusPill tone="success">Hoş geldin</StatusPill>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Güvenli giriş</p>
           </div>
 
-          <h1 className="mt-5 font-display text-4xl leading-none text-slate-950">Sign in</h1>
+          <h1 className="mt-5 font-display text-4xl leading-none text-slate-950">Giriş yap</h1>
         </Card>
 
         <Card>
           <form id="sign-in-form" onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Account</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Email and password</h2>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Hesap</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">E-posta ve şifre</h2>
             </div>
 
             {notice ? (
@@ -118,7 +118,7 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
               autoComplete="email"
               inputMode="email"
               label="Email"
-              placeholder="you@example.com"
+              placeholder="ornek@mail.com"
               defaultValue={defaultEmail}
               error={fieldErrors.email}
             />
@@ -128,16 +128,16 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
               name="password"
               type="password"
               autoComplete="current-password"
-              label="Password"
-              hint="8+ chars"
-              placeholder="Enter your password"
+              label="Şifre"
+              hint="8+ karakter"
+              placeholder="Şifreni gir"
               error={fieldErrors.password}
             />
 
             <p className="text-sm leading-6 text-slate-500">
-              New here?{' '}
+              Hesabın yok mu?{' '}
               <Link href={signUpHref} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4">
-                Create an account
+                Kayıt ol
               </Link>
               .
             </p>

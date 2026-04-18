@@ -42,20 +42,20 @@ function getSelectedDayTone(selectedDayKey: string, todayKey: string) {
   if (selectedDayKey === todayKey) {
     return {
       label: 'Today',
-      description: 'Live view',
+      description: 'Live',
     };
   }
 
   if (selectedDayKey === shiftAppDayKey(todayKey, -1)) {
     return {
       label: 'Yesterday',
-      description: 'Past day',
+      description: 'Past',
     };
   }
 
   return {
     label: 'History',
-    description: 'Past day',
+    description: 'Past',
   };
 }
 
@@ -63,28 +63,23 @@ function getHistoryState(summary: Awaited<ReturnType<typeof getMealDaySummary>>,
   if (summary.mealCount === 0) {
     return {
       variant: 'empty' as const,
-      title: isToday ? 'Today is still open and ready for the first meal' : 'No meals were saved for this day',
-      description: isToday
-        ? 'History still opens on today, but you can move backward one day at a time whenever you want to review older entries.'
-        : 'This day is part of your history timeline, but there are no meals saved here yet. Use the day controls to move without losing context.',
+      title: isToday ? 'No meals yet' : 'No meals on this day',
+      description: isToday ? 'Start with camera log.' : 'Pick another day or add a meal.',
     };
   }
 
   if (summary.hasDraftMeals) {
     return {
       variant: 'success' as const,
-      title: 'This day includes editable draft meals',
-      description:
-        'Drafts remain visible in history so you can clean them up later without mixing them up with fully confirmed days.',
+      title: 'This day has draft meals',
+      description: 'Drafts are editable.',
     };
   }
 
   return {
     variant: 'success' as const,
-    title: isToday ? 'Today is already taking shape' : 'This day is fully readable at a glance',
-    description: isToday
-      ? 'The live day stays easy to scan, and the same structure carries into older days so nothing feels mentally different when you look back.'
-      : 'Meals, totals, and macro coverage stay grouped into the same Istanbul-local day bucket for a calm review flow.',
+    title: isToday ? 'Today is in progress' : 'Day summary ready',
+    description: isToday ? 'Continue logging.' : 'Review and edit if needed.',
   };
 }
 
@@ -104,6 +99,15 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     <Stack gap="xl">
       <section aria-labelledby="history-title">
         <ScreenHeader eyebrow="History" title="History" />
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Link href="/app/add-meal?method=camera&autocapture=1" className={buttonStyles({ size: 'sm', fullWidth: true })}>
+            Camera
+          </Link>
+          <Link href="/app/add-meal?method=text" className={buttonStyles({ size: 'sm', variant: 'soft', fullWidth: true })}>
+            Text
+          </Link>
+        </div>
       </section>
 
       <section aria-labelledby="history-day-nav">
@@ -162,8 +166,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
             eyebrow="Selected day"
             dateLabel={
               isToday
-                ? `${summary.dateLabel} · History stays anchored to today first`
-                : `${summary.dateLabel} · Past day view`
+                ? `${summary.dateLabel} · Live`
+                : `${summary.dateLabel} · Past`
             }
             consumed={summary.consumed}
             targets={summary.targets}
@@ -178,8 +182,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                     Today
                   </Link>
                 ) : null}
-                <Link href="/app/add-meal" className={buttonStyles({ size: 'sm', variant: 'soft' })}>
-                  Add meal
+                <Link href="/app/add-meal?method=camera&autocapture=1" className={buttonStyles({ size: 'sm', variant: 'soft' })}>
+                  Camera
                 </Link>
               </div>
             }
@@ -211,16 +215,19 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
       </section>
 
       <section aria-labelledby="history-state">
-        <StatePanel
-          variant={historyState.variant}
-          title={historyState.title}
-          description={historyState.description}
-          action={
-            <Link href={isToday ? '/app/add-meal' : '/app/history'} className={buttonStyles({ variant: 'secondary' })}>
-              {isToday ? 'Add a meal' : 'Return to today'}
-            </Link>
-          }
-        />
+          <StatePanel
+            variant={historyState.variant}
+            title={historyState.title}
+            description={historyState.description}
+            action={
+              <Link
+                href={isToday ? '/app/add-meal?method=camera&autocapture=1' : '/app/history'}
+                className={buttonStyles({ variant: 'secondary' })}
+              >
+                {isToday ? 'Open camera' : 'Go to today'}
+              </Link>
+            }
+          />
       </section>
 
       <section aria-labelledby="history-meals-heading">
@@ -230,7 +237,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           {summary.meals.length === 0 ? (
             <Card tone="subtle" className="text-center">
               <p className="text-base font-semibold text-slate-950">No meals for this day</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Choose another day or go back to today.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Choose another day.</p>
             </Card>
           ) : (
             summary.meals.map((meal) => (
@@ -242,7 +249,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900">{meal.isDraft ? 'Draft meal' : 'Saved meal'}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
-                        {meal.notes ? meal.notes : 'You can adjust title, meal type, notes, or time from here.'}
+                        {meal.notes ? meal.notes : 'Tap edit for details.'}
                       </p>
                     </div>
                     <HistoryMealSheet dayKey={summary.dayKey} meal={meal} />

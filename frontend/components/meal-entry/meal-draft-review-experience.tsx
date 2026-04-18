@@ -58,12 +58,12 @@ function createEditableItems(draftResult: MealDraftAnalysisResult): EditableDraf
     fiberGrams: String(item.macros.fiberGrams),
     sourceLabel:
       item.nutritionSource === 'USER_REVIEW'
-        ? 'Edited by you'
+        ? 'Edited'
         : item.nutritionSource === 'CACHE'
-          ? 'Shared cache'
+          ? 'Cache'
           : item.nutritionSource === 'CATALOG'
-            ? 'Shared catalog'
-            : 'Fresh analysis',
+            ? 'Catalog'
+            : 'AI',
     unresolved: item.unresolved,
     confidence: item.confidence,
   }));
@@ -231,7 +231,7 @@ export function MealDraftReviewExperience({
         return;
       }
 
-      setFormSuccess('Draft changes saved. The meal is still not part of your day until you confirm it.');
+      setFormSuccess('Draft saved.');
       router.refresh();
     });
   }
@@ -276,9 +276,8 @@ export function MealDraftReviewExperience({
           <Card tone="subtle" className="border-amber-200 bg-amber-50/70">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.2em] text-amber-700">Review focus</p>
-                <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950">Some parts of this draft need a closer look</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-700">Check uncertain items before confirm.</p>
+                <p className="text-xs font-medium uppercase tracking-[0.2em] text-amber-700">Attention</p>
+                <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950">Some items need review</h3>
               </div>
               <StatusPill tone="neutral">
                 {items.filter((item) => item.unresolved || item.confidence < 0.75).length || initialDraftResult.warnings.length} checks
@@ -300,9 +299,9 @@ export function MealDraftReviewExperience({
         <Card tone="hero" className="space-y-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Review before save</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Make sure this meal feels right</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Nothing is saved into {dayKey} yet.</p>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Review</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Check and confirm</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Not saved to {dayKey} yet.</p>
             </div>
             <StatusPill tone={isDirty ? 'neutral' : 'success'}>{isDirty ? 'Unsaved edits' : 'Ready'}</StatusPill>
           </div>
@@ -348,9 +347,6 @@ export function MealDraftReviewExperience({
                     )}
                   >
                     <p className="text-sm font-semibold">{option.label}</p>
-                    <p className={cn('mt-1 text-xs leading-5', mealTypeSuggestion === option.value ? 'text-white/75' : 'text-slate-500')}>
-                      {option.description}
-                    </p>
                   </button>
                 ))}
               </div>
@@ -370,8 +366,8 @@ export function MealDraftReviewExperience({
         {items.length === 0 ? (
           <StatePanel
             variant="empty"
-            title="No food items are in this draft yet"
-            description="Add items manually."
+            title="No items yet"
+            description="Add your first item."
             action={
               <Button type="button" variant="secondary" onClick={addItem}>
                 <Icon name="plus" className="h-4 w-4" />
@@ -390,7 +386,7 @@ export function MealDraftReviewExperience({
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusPill tone={item.unresolved || item.confidence < 0.75 ? 'neutral' : 'success'}>
-                    {item.unresolved || item.confidence < 0.75 ? 'Needs review' : 'More certain'}
+                    {item.unresolved || item.confidence < 0.75 ? 'Check' : 'OK'}
                   </StatusPill>
                   <button
                     type="button"
@@ -409,7 +405,7 @@ export function MealDraftReviewExperience({
 
               {item.unresolved || item.confidence < 0.75 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-slate-700">
-                  Low confidence. Check it.
+                  Low confidence.
                 </div>
               ) : null}
 
@@ -502,7 +498,7 @@ export function MealDraftReviewExperience({
           className={buttonStyles({ variant: 'soft', fullWidth: true, className: 'h-14 rounded-[24px]' })}
         >
           <Icon name="plus" className="h-4 w-4" />
-          Add missing item
+          Add item
         </button>
       </div>
 
@@ -510,14 +506,14 @@ export function MealDraftReviewExperience({
         <BottomActionBar>
           <div className="grid grid-cols-2 gap-3">
             <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={isPending || !isDirty}>
-              {isPending && actionLabel === 'save' ? 'Saving draft...' : isDirty ? 'Save draft edits' : 'Draft already saved'}
+              {isPending && actionLabel === 'save' ? 'Saving...' : isDirty ? 'Save draft' : 'Saved'}
             </Button>
             <Button type="button" onClick={handleConfirm} disabled={isPending || items.length === 0}>
               {isPending && actionLabel === 'confirm' ? 'Confirming...' : 'Confirm meal'}
             </Button>
           </div>
           <p className="text-center text-xs leading-5 text-slate-500">
-            Confirm saves this meal.
+            Confirm adds this meal to today.
           </p>
         </BottomActionBar>
       </div>

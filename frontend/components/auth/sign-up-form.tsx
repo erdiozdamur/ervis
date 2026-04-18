@@ -65,7 +65,7 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
 
         if (!response.ok || !payload?.ok) {
           setFieldErrors(payload?.ok === false ? payload.fieldErrors ?? {} : {});
-          setFormError(payload?.ok === false ? payload.message : 'Account creation failed. Please try again.');
+          setFormError(payload?.ok === false ? payload.message : 'Hesap oluşturulamadı.');
           return;
         }
 
@@ -88,7 +88,7 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
         router.replace((result.url ?? AUTH_APP_PATH) as Route);
         router.refresh();
       } catch {
-        setFormError('Account creation is unavailable right now. Confirm the local frontend server is running and try again.');
+        setFormError('Kayıt şu anda kullanılamıyor. Tekrar dene.');
       }
     });
   }
@@ -98,10 +98,10 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
       footer={
         <BottomActionBar>
           <button type="submit" form="sign-up-form" className={buttonStyles({ fullWidth: true })} disabled={isPending}>
-            {isPending ? 'Creating account...' : 'Create account'}
+            {isPending ? 'Hesap oluşturuluyor...' : 'Hesap oluştur'}
           </button>
           <Link href={signInHref} className={buttonStyles({ variant: 'secondary', fullWidth: true })}>
-            I already have an account
+            Zaten hesabım var
           </Link>
         </BottomActionBar>
       }
@@ -109,18 +109,18 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
       <Stack gap="xl">
         <Card tone="hero" className="py-6">
           <div className="flex items-center justify-between gap-3">
-            <StatusPill tone="success">Create account</StatusPill>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Private by default</p>
+            <StatusPill tone="success">Kayıt ol</StatusPill>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Gizlilik odaklı</p>
           </div>
 
-          <h1 className="mt-5 font-display text-4xl leading-none text-slate-950">Create account</h1>
+          <h1 className="mt-5 font-display text-4xl leading-none text-slate-950">Hesap oluştur</h1>
         </Card>
 
         <Card>
           <form id="sign-up-form" onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Get started</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Basic account info</h2>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Başlangıç</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Temel hesap bilgileri</h2>
             </div>
 
             {formError ? (
@@ -132,9 +132,9 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
               name="name"
               type="text"
               autoComplete="name"
-              label="Name"
-              hint="Optional"
-              placeholder="How should we address you?"
+              label="Ad"
+              hint="Opsiyonel"
+              placeholder="Adın"
               error={fieldErrors.name}
             />
 
@@ -145,7 +145,7 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
               autoComplete="email"
               inputMode="email"
               label="Email"
-              placeholder="you@example.com"
+              placeholder="ornek@mail.com"
               error={fieldErrors.email}
             />
 
@@ -154,9 +154,9 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
               name="password"
               type="password"
               autoComplete="new-password"
-              label="Password"
-              hint="8+ chars"
-              placeholder="Create a password"
+              label="Şifre"
+              hint="8+ karakter"
+              placeholder="Şifre oluştur"
               error={fieldErrors.password}
             />
 
@@ -165,15 +165,15 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
               name="confirmPassword"
               type="password"
               autoComplete="new-password"
-              label="Confirm password"
-              placeholder="Repeat your password"
+              label="Şifre tekrar"
+              placeholder="Şifreni tekrar gir"
               error={fieldErrors.confirmPassword}
             />
 
             <p className="text-sm leading-6 text-slate-500">
-              Already have an account?{' '}
+              Zaten hesabın var mı?{' '}
               <Link href={signInHref} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4">
-                Sign in
+                Giriş yap
               </Link>
               .
             </p>

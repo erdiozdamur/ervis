@@ -21,8 +21,8 @@ function getCalorieState(targets: MealTargets | null, calorieDelta: number | nul
     return {
       badge: 'Tracking live',
       badgeTone: 'neutral' as const,
-      heading: 'Tracking is on',
-      description: 'Add profile targets to unlock a clearer consumed-versus-target view.',
+      heading: 'Tracking',
+      description: 'Set profile targets for remaining calories.',
       deltaLabel: 'Profile target needed',
       progressLabel: 'No target yet',
       fillClass: 'bg-slate-700',
@@ -34,8 +34,8 @@ function getCalorieState(targets: MealTargets | null, calorieDelta: number | nul
     return {
       badge: 'Room left',
       badgeTone: 'neutral' as const,
-      heading: 'Plenty of room left',
-      description: 'The next meal can stay simple. You still have comfortable space in today.',
+      heading: 'Room left',
+      description: 'You still have space today.',
       deltaLabel: `${Math.abs(Math.round(calorieDelta))} kcal left`,
       progressLabel: 'Under target',
       fillClass: 'bg-slate-950',
@@ -47,8 +47,8 @@ function getCalorieState(targets: MealTargets | null, calorieDelta: number | nul
     return {
       badge: 'On track',
       badgeTone: 'success' as const,
-      heading: 'Nicely on track',
-      description: 'You are getting close enough that the rest of the day is easy to judge.',
+      heading: 'On track',
+      description: 'Close to target.',
       deltaLabel: `${Math.abs(Math.round(calorieDelta))} kcal left`,
       progressLabel: 'Close to target',
       fillClass: 'bg-emerald-500',
@@ -61,7 +61,7 @@ function getCalorieState(targets: MealTargets | null, calorieDelta: number | nul
       badge: 'Target met',
       badgeTone: 'success' as const,
       heading: 'Target reached',
-      description: 'You have hit the daily calorie target, and edits still remain clear if anything changes.',
+      description: 'Daily target reached.',
       deltaLabel: 'Target met',
       progressLabel: 'At target',
       fillClass: 'bg-emerald-600',
@@ -73,7 +73,7 @@ function getCalorieState(targets: MealTargets | null, calorieDelta: number | nul
     badge: 'Over target',
     badgeTone: 'neutral' as const,
     heading: 'Above target',
-    description: 'The overage stays visible without turning the screen into a punishment meter.',
+    description: 'You are over target.',
     deltaLabel: `${Math.abs(Math.round(calorieDelta))} kcal over`,
     progressLabel: 'Past target',
     fillClass: 'bg-amber-500',
@@ -154,7 +154,7 @@ export function DailyBalanceCard({
           {progress != null ? (
             <p className="mt-3 text-sm text-slate-500">{Math.max(0, progress)}% of target logged</p>
           ) : (
-            <p className="mt-3 text-sm text-slate-500">Profile targets unlock remaining calories and clearer daily guidance.</p>
+            <p className="mt-3 text-sm text-slate-500">Set profile targets to see progress.</p>
           )}
         </div>
       </div>

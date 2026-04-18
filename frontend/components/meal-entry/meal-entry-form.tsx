@@ -49,16 +49,31 @@ function formatDurationLabel(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function MealEntryForm() {
+type MealEntryFormProps = {
+  initialMethod?: MealInputMethod;
+  autoCapture?: boolean;
+  embedded?: boolean;
+  autoConfirmDraft?: boolean;
+  onCompleted?: () => void;
+};
+
+export function MealEntryForm({
+  initialMethod = 'camera',
+  autoCapture = false,
+  embedded = false,
+  autoConfirmDraft = false,
+  onCompleted,
+}: MealEntryFormProps) {
   const router = useRouter();
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
   const cameraCaptureRef = useRef<HTMLInputElement | null>(null);
   const audioUploadRef = useRef<HTMLInputElement | null>(null);
   const cameraCaptureModeRef = useRef<'append' | 'replace'>('append');
+  const autoCaptureTriggeredRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
-  const [selectedMethod, setSelectedMethod] = useState<MealInputMethod>('camera');
+  const [selectedMethod, setSelectedMethod] = useState<MealInputMethod>(initialMethod);
   const [description, setDescription] = useState('');
   const [imageAssets, setImageAssets] = useState<SelectedImageAsset[]>([]);
   const [audioAssets, setAudioAssets] = useState<SelectedAudioAsset[]>([]);
@@ -219,7 +234,7 @@ export function MealEntryForm() {
     }
 
     if (!supportsRecording) {
-      setRecordingError('Live recording is not available in this browser. You can still upload an audio file.');
+      setRecordingError('Bu tarayıcı canlı kaydı desteklemiyor. Ses dosyası yükleyebilirsin.');
       return;
     }
 
@@ -265,7 +280,7 @@ export function MealEntryForm() {
       setRecordingStartedAt(Date.now());
       setRecordingElapsedSeconds(0);
     } catch {
-      setRecordingError('Microphone access was not available. You can still upload an audio file instead.');
+      setRecordingError('Mikrofon izni alınamadı. Ses dosyası yükleyebilirsin.');
       setRecordingState('idle');
       setRecordingStartedAt(null);
       setRecordingElapsedSeconds(0);
@@ -325,6 +340,20 @@ export function MealEntryForm() {
   const cameraAssets = imageAssets.filter((asset) => asset.source === 'camera');
   const latestCameraAsset = cameraAssets.at(-1) ?? null;
 
+  useEffect(() => {
+    setSelectedMethod(initialMethod);
+    autoCaptureTriggeredRef.current = false;
+  }, [initialMethod]);
+
+  useEffect(() => {
+    if (!autoCapture || selectedMethod !== 'camera' || autoCaptureTriggeredRef.current || latestCameraAsset) {
+      return;
+    }
+
+    autoCaptureTriggeredRef.current = true;
+    openCameraCapture();
+  }, [autoCapture, latestCameraAsset, selectedMethod]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -333,7 +362,7 @@ export function MealEntryForm() {
     }
 
     if (recordingState === 'recording') {
-      setFormError('Finish the audio recording before creating the draft.');
+      setFormError('Taslak oluşturmadan önce ses kaydını durdur.');
       return;
     }
 
@@ -365,7 +394,32 @@ export function MealEntryForm() {
 
       if (!response.ok || !payload?.ok) {
         setFieldErrors(payload?.ok === false ? payload.fieldErrors ?? {} : {});
-        setFormError(payload?.ok === false ? payload.message : 'The meal draft could not be created. Please try again.');
+        setFormError(payload?.ok === false ? payload.message : 'Taslak oluşturulamadı. Tekrar dene.');
+        return;
+      }
+
+      if (autoConfirmDraft) {
+        const confirmResponse = await fetch(`/api/meals/${payload.mealId}/confirm`, {
+          method: 'POST',
+        });
+        const confirmPayload = (await confirmResponse.json().catch(() => null)) as
+          | {
+              ok: true;
+            }
+          | {
+              ok: false;
+              message: string;
+            }
+          | null;
+
+        if (!confirmResponse.ok || !confirmPayload?.ok) {
+          setFormError(confirmPayload?.ok === false ? confirmPayload.message : 'Öğün kaydedilemedi.');
+          return;
+        }
+      }
+
+      if (onCompleted) {
+        onCompleted();
         return;
       }
 
@@ -387,18 +441,15 @@ export function MealEntryForm() {
       />
       <input ref={audioUploadRef} type="file" accept="audio/*" multiple className="hidden" onChange={handleAudioUploadChange} />
 
+      {!embedded ? (
       <Card tone="hero">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Draft-first capture</p>
-            <h1 className="mt-2 font-display text-4xl leading-none text-slate-950">Add meal</h1>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Hızlı giriş</p>
+            <h1 className="mt-2 font-display text-4xl leading-none text-slate-950">Öğün ekle</h1>
           </div>
-          <StatusPill tone="success">Review before save</StatusPill>
+          <StatusPill tone="success">Taslak</StatusPill>
         </div>
-
-        <p className="mt-5 text-sm leading-6 text-slate-600">
-          Choose a method. Nothing is saved yet.
-        </p>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
           {mealInputMethodOptions.map((method) => {
@@ -426,29 +477,26 @@ export function MealEntryForm() {
                   </span>
                 </div>
                 <p className="mt-4 text-sm font-semibold">{method.title}</p>
-                <p className={cn('mt-2 text-sm leading-6', isSelected ? 'text-white/78' : 'text-slate-600')}>{method.description}</p>
+                <p className={cn('mt-1 text-xs uppercase tracking-[0.14em]', isSelected ? 'text-white/72' : 'text-slate-500')}>seç</p>
               </button>
             );
           })}
         </div>
       </Card>
+      ) : null}
 
       <Card tone="subtle">
         {selectedMethod === 'text' ? (
           <Stack gap="md">
             <div>
-              <p className="text-sm font-semibold text-slate-950">Describe the meal</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Quick note.</p>
-            </div>
-            <div>
               <Textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Example: chicken wrap, ayran, and a small side salad"
+                placeholder="Örn: tavuk dürüm, ayran, küçük salata"
                 maxLength={MAX_TEXT_INPUT_LENGTH}
               />
               <div className="mt-2 flex items-center justify-between gap-3">
-                <p className="text-sm text-slate-500">Keep it simple. Portions and brands can be rough at this stage.</p>
+                <p className="text-sm text-slate-500">Kısa not yeterli.</p>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                   {description.trim().length}/{MAX_TEXT_INPUT_LENGTH}
                 </p>
@@ -460,13 +508,9 @@ export function MealEntryForm() {
 
         {selectedMethod === 'image' ? (
           <Stack gap="md">
-            <div>
-              <p className="text-sm font-semibold text-slate-950">Upload meal photos</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Use existing photos.</p>
-            </div>
             <button type="button" onClick={() => imageUploadRef.current?.click()} className={buttonStyles({ variant: 'secondary', fullWidth: true })}>
               <Icon name="upload" className="h-4 w-4" />
-              Upload photos
+              Fotoğraf yükle
             </button>
             {fieldErrors.images ? <p className="text-sm text-rose-600">{fieldErrors.images}</p> : null}
           </Stack>
@@ -474,41 +518,38 @@ export function MealEntryForm() {
 
         {selectedMethod === 'camera' ? (
           <Stack gap="md">
-            <div>
-              <p className="text-sm font-semibold text-slate-950">Capture from camera</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Take a new photo.</p>
-            </div>
+            <p className="text-sm font-semibold text-slate-950">Fotoğraf çek</p>
 
             {latestCameraAsset ? (
               <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-soft">
                 <div className="relative">
                   <Image
                     src={latestCameraAsset.previewUrl}
-                    alt="Latest camera capture preview"
+                    alt="Son kamera çekimi"
                     width={1080}
                     height={1440}
                     unoptimized
                     className="h-[24rem] w-full object-cover"
                   />
                   <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
-                    <StatusPill tone="success">Preview ready</StatusPill>
+                    <StatusPill tone="success">Hazır</StatusPill>
                     <div className="rounded-2xl bg-slate-950/75 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white">
-                      Camera capture
+                      Kamera
                     </div>
                   </div>
                 </div>
 
                 <div className="p-4">
-                  <p className="text-base font-semibold text-slate-950">Review the photo, then continue</p>
+                  <p className="text-base font-semibold text-slate-950">Uygun mu?</p>
                   <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-400">{formatFileSizeLabel(latestCameraAsset.file.size)}</p>
 
                   <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Button type="button" variant="secondary" fullWidth onClick={() => openCameraCapture('replace')}>
                       <Icon name="camera" className="h-4 w-4" />
-                      Retake photo
+                      Yeniden çek
                     </Button>
                     <Button type="submit" fullWidth disabled={isPending || recordingState === 'recording'}>
-                      {isPending ? 'Creating draft...' : 'Use photo for analysis'}
+                      {isPending ? 'Kaydediliyor...' : 'Bu fotoğrafla kaydet'}
                     </Button>
                   </div>
 
@@ -518,7 +559,7 @@ export function MealEntryForm() {
                     className={buttonStyles({ variant: 'ghost', size: 'sm', className: 'mt-3 w-full justify-center' })}
                   >
                     <Icon name="photo" className="h-4 w-4" />
-                    Keep this and add another angle
+                    Bir açı daha ekle
                   </button>
                 </div>
               </div>
@@ -529,41 +570,28 @@ export function MealEntryForm() {
                     <Icon name="camera" className="h-6 w-6" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-base font-semibold text-slate-950">Open the camera and take the meal photo</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      The browser will use direct camera capture where supported. If not, it will safely fall back to the image picker instead of breaking the flow.
-                    </p>
+                    <p className="text-base font-semibold text-slate-950">Kamerayı aç</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">Çek ve kaydet.</p>
                   </div>
                 </div>
 
                 <button type="button" onClick={() => openCameraCapture()} className={buttonStyles({ fullWidth: true, className: 'mt-5' })}>
                   <Icon name="camera" className="h-4 w-4" />
-                  Open camera
+                  Kamerayı aç
                 </button>
               </div>
             )}
-
-            <p className="text-sm text-slate-500">
-              After capture, the photo stays visible here so the user can retake or continue without losing momentum.
-            </p>
             {fieldErrors.images ? <p className="text-sm text-rose-600">{fieldErrors.images}</p> : null}
           </Stack>
         ) : null}
 
         {selectedMethod === 'audio' ? (
           <Stack gap="md">
-            <div>
-              <p className="text-sm font-semibold text-slate-950">Upload or record audio</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Speak instead of typing.</p>
-            </div>
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4">
-              <p className="text-sm font-semibold text-slate-950">Speak naturally in Turkish</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Ornek: 1 tabak kuru fasulye, yarim porsiyon pilav.</p>
-            </div>
+            <p className="text-sm font-semibold text-slate-950">Ses kaydı veya yükleme</p>
             <div className="grid grid-cols-1 gap-3">
               <button type="button" onClick={() => audioUploadRef.current?.click()} className={buttonStyles({ variant: 'secondary', fullWidth: true })}>
                 <Icon name="upload" className="h-4 w-4" />
-                Upload audio
+                Ses dosyası yükle
               </button>
               <button
                 type="button"
@@ -575,14 +603,14 @@ export function MealEntryForm() {
                 })}
               >
                 <Icon name="microphone" className="h-4 w-4" />
-                {recordingState === 'recording' ? 'Stop recording' : 'Record voice note'}
+                {recordingState === 'recording' ? 'Kaydı durdur' : 'Ses notu kaydet'}
               </button>
             </div>
             {recordingState === 'recording' ? (
               <div className="flex items-center justify-between gap-3 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-950">Recording in progress</p>
-                  <p className="mt-1 text-sm text-slate-600">Say the meal the way you would normally describe it out loud.</p>
+                  <p className="text-sm font-semibold text-slate-950">Kayıt alınıyor</p>
+                  <p className="mt-1 text-sm text-slate-600">Öğününü anlat.</p>
                 </div>
                 <StatusPill tone="success">{formatDurationLabel(recordingElapsedSeconds)}</StatusPill>
               </div>
@@ -596,21 +624,17 @@ export function MealEntryForm() {
       <Card tone="subtle">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-950">Selected inputs</p>
-            <p className="mt-1 text-sm text-slate-500">
-              {hasAnyInput()
-                ? 'Draft inputlari hazir.'
-                : 'Eklediklerin burada gorunur.'}
-            </p>
+            <p className="text-sm font-semibold text-slate-950">Seçilen girişler</p>
+            <p className="mt-1 text-sm text-slate-500">{hasAnyInput() ? 'Kaydetmeye hazır.' : 'Henüz giriş yok.'}</p>
           </div>
-          <StatusPill tone={hasAnyInput() ? 'success' : 'neutral'}>{hasAnyInput() ? 'Ready' : 'Empty'}</StatusPill>
+          <StatusPill tone={hasAnyInput() ? 'success' : 'neutral'}>{hasAnyInput() ? 'Hazır' : 'Boş'}</StatusPill>
         </div>
 
         {description.trim().length > 0 ? (
           <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Text note</p>
+                <p className="text-sm font-semibold text-slate-900">Metin notu</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{description.trim()}</p>
               </div>
               <Icon name="text" className="h-5 w-5 text-slate-500" />
@@ -631,14 +655,14 @@ export function MealEntryForm() {
                   className="h-36 w-full object-cover"
                 />
                 <div className="p-3">
-                  <p className="text-sm font-semibold text-slate-900">{asset.source === 'camera' ? 'Camera capture' : 'Uploaded image'}</p>
+                  <p className="text-sm font-semibold text-slate-900">{asset.source === 'camera' ? 'Kamera' : 'Yüklenen görsel'}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{formatFileSizeLabel(asset.file.size)}</p>
                   <button
                     type="button"
                     onClick={() => removeImageAsset(asset.id)}
                     className={buttonStyles({ variant: 'ghost', size: 'sm', className: 'mt-3 w-full justify-center' })}
                   >
-                    Remove
+                    Kaldır
                   </button>
                 </div>
               </div>
@@ -652,7 +676,7 @@ export function MealEntryForm() {
               <div key={asset.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-soft">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{asset.source === 'recording' ? 'Recorded voice note' : 'Uploaded audio'}</p>
+                    <p className="text-sm font-semibold text-slate-900">{asset.source === 'recording' ? 'Ses kaydı' : 'Yüklenen ses'}</p>
                     <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{formatFileSizeLabel(asset.file.size)}</p>
                   </div>
                   <Icon name="microphone" className="h-5 w-5 text-slate-500" />
@@ -661,14 +685,14 @@ export function MealEntryForm() {
                   <source src={asset.previewUrl} type={asset.file.type || 'audio/webm'} />
                 </audio>
                 <p className="mt-3 text-sm leading-6 text-slate-500">
-                  Transcript and review next.
+                  Transkript otomatik eklenir.
                 </p>
                 <button
                   type="button"
                   onClick={() => removeAudioAsset(asset.id)}
                   className={buttonStyles({ variant: 'ghost', size: 'sm', className: 'mt-3 w-full justify-center' })}
                 >
-                  Remove
+                  Kaldır
                 </button>
               </div>
             ))}
@@ -679,8 +703,8 @@ export function MealEntryForm() {
           <div className="mt-4">
             <StatePanel
               variant="empty"
-              title="Nothing attached yet"
-              description="Add text, photo, camera, or audio."
+              title="Devam etmek için giriş ekle"
+              description="Yazı, fotoğraf, kamera veya ses."
             />
           </div>
         ) : null}
@@ -690,20 +714,24 @@ export function MealEntryForm() {
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{formError}</div>
       ) : null}
 
-      <div className="sticky bottom-24 z-10 -mx-1">
-        <BottomActionBar>
-          <Button type="submit" fullWidth disabled={!hasAnyInput() || isPending || recordingState === 'recording'}>
-            {isPending
-              ? 'Creating draft...'
-              : selectedMethod === 'camera' && latestCameraAsset
-                ? 'Use captured photo for analysis'
-                : 'Create editable draft'}
-          </Button>
-          <p className="text-center text-sm leading-6 text-slate-500">
-            Creates a draft only.
-          </p>
-        </BottomActionBar>
-      </div>
+      {embedded ? (
+        <Button type="submit" fullWidth disabled={!hasAnyInput() || isPending || recordingState === 'recording'}>
+          {isPending ? 'Kaydediliyor...' : 'Öğünü kaydet'}
+        </Button>
+      ) : (
+        <div className="sticky bottom-24 z-10 -mx-1">
+          <BottomActionBar>
+            <Button type="submit" fullWidth disabled={!hasAnyInput() || isPending || recordingState === 'recording'}>
+              {isPending
+                ? 'Kaydediliyor...'
+                : selectedMethod === 'camera' && latestCameraAsset
+                  ? 'Fotoğrafla taslak oluştur'
+                  : 'Taslak oluştur'}
+            </Button>
+            <p className="text-center text-sm leading-6 text-slate-500">Onay bir sonraki adımda.</p>
+          </BottomActionBar>
+        </div>
+      )}
     </form>
   );
 }

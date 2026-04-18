@@ -132,7 +132,7 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
   return (
     <>
       <button type="button" onClick={handleOpen} className={buttonStyles({ variant: 'ghost', size: 'sm' })}>
-        Edit or delete
+        Edit
       </button>
 
       <BottomSheet
@@ -141,8 +141,8 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
         title={meal.title}
         description={
           meal.isDraft
-            ? 'Draft meals still belong in the draft review flow. Saved meals can also open the full item editor from here.'
-            : 'You can fine-tune the meal label, type, or time here, or open the full editor to change saved meal items.'
+            ? 'Edit draft or open full draft review.'
+            : 'Edit meal info or open item editor.'
         }
         footer={
           <div className="grid grid-cols-2 gap-3">
@@ -157,12 +157,7 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
       >
         <form id={`meal-edit-${meal.id}`} className="space-y-4" onSubmit={handleSubmit}>
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-sm font-semibold text-slate-900">{meal.isDraft ? 'Need item-level edits?' : 'Want to change meal items too?'}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {meal.isDraft
-                ? 'Open the draft review flow to edit AI-generated items before they become part of the day.'
-                : 'Open the full meal editor to update saved item rows, portions, grams, and macros with live totals.'}
-            </p>
+            <p className="text-sm font-semibold text-slate-900">{meal.isDraft ? 'Need item edits?' : 'Need item edits?'}</p>
             <Link
               href={(meal.isDraft ? `/app/add-meal/review/${meal.id}` : `/app/meals/${meal.id}/edit`) as Route}
               className={buttonStyles({ variant: 'secondary', className: 'mt-4 w-full' })}
@@ -233,7 +228,6 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
               onChange={(event) => setConsumedTime(event.target.value)}
               className="mt-2"
             />
-            <p className="mt-2 text-sm leading-6 text-slate-500">Saved against the selected Europe/Istanbul day.</p>
             {fieldErrors.consumedTime ? <p className="mt-2 text-sm text-rose-600">{fieldErrors.consumedTime}</p> : null}
           </div>
 
@@ -246,7 +240,7 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               className="mt-2"
-              placeholder="Optional context you may want to keep with the meal."
+              placeholder="Optional note"
               maxLength={600}
             />
             {fieldErrors.notes ? <p className="mt-2 text-sm text-rose-600">{fieldErrors.notes}</p> : null}
@@ -256,9 +250,7 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-rose-900">Delete this meal</p>
-                <p className="mt-2 text-sm leading-6 text-rose-700">
-                  This removes the meal and its saved analysis from this user account. Use this when the entry should no longer count for the day.
-                </p>
+                <p className="mt-2 text-sm leading-6 text-rose-700">Removes this meal from the day.</p>
               </div>
               <button
                 type="button"
@@ -276,9 +268,7 @@ export function HistoryMealSheet({ dayKey, meal }: HistoryMealSheetProps) {
             {confirmDelete ? (
               <div className="mt-4 rounded-2xl border border-rose-200 bg-white/80 p-4">
                 <p className="text-sm font-semibold text-slate-950">Final check</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  This cannot be undone automatically. If you still want to remove it, confirm below.
-                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">This action cannot be undone.</p>
                 <Button
                   type="button"
                   variant="secondary"

@@ -32,7 +32,7 @@ export function AppTopBar({ user }: AppTopBarProps) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <StatusPill tone="success" className="px-2.5 py-1 text-[10px] tracking-[0.18em]">
-              Today
+              Bugün
             </StatusPill>
             {firstName ? <p className="truncate text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{firstName}</p> : null}
           </div>

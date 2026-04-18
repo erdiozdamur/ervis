@@ -30,13 +30,13 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
         <ScreenHeader
           eyebrow="Meal review"
           title="This draft could not be found"
-          description="The draft may have been removed, or it may belong to a different signed-in account."
+          description="Create a new draft and try again."
         />
 
         <StatePanel
           variant="error"
-          title="The review state is unavailable"
-          description="Return to meal entry and create a fresh draft to continue."
+          title="Review unavailable"
+          description="Return to add meal."
           action={
             <Link href={'/app/add-meal' as Route} className={buttonStyles({ variant: 'secondary' })}>
               Back to add meal
@@ -50,23 +50,23 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
   return (
     <Stack gap="xl">
       <section aria-labelledby="meal-review-title">
-        <ScreenHeader eyebrow="Meal review" title="Review" />
+        <ScreenHeader eyebrow="Meal review" title="Confirm meal" />
 
         <Card tone="hero">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Draft created</p>
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Draft</p>
               <h1 id="meal-review-title" className="mt-2 font-display text-4xl leading-none text-slate-950">
-                Review
+                Confirm
               </h1>
             </div>
             <StatusPill tone={draft.analysisStatus === 'FAILED' ? 'neutral' : 'success'}>{draft.analysisStatus.toLowerCase()}</StatusPill>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3">
-            <StatWidget label="Text" value={`${draft.textCount}`} helper="Descriptions or notes" />
-            <StatWidget label="Images" value={`${draft.imageCount}`} helper="Uploads and camera" />
-            <StatWidget label="Audio" value={`${draft.audioCount}`} helper="Uploads and recordings" />
+            <StatWidget label="Text" value={`${draft.textCount}`} helper="notes" />
+            <StatWidget label="Images" value={`${draft.imageCount}`} helper="photos" />
+            <StatWidget label="Audio" value={`${draft.audioCount}`} helper="voice" />
           </div>
 
           <div className="mt-6 rounded-[24px] border border-white/70 bg-white/82 p-4 shadow-soft text-sm text-slate-600">
@@ -86,11 +86,11 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
       {!draft.draftResult ? (
         <StatePanel
           variant="empty"
-          title="Your inputs are still safe even without a finished result"
-          description="Nothing has been saved into the day yet. You can rerun analysis above or start over with a fresh draft without losing trust in the flow."
+          title="No result yet"
+          description="Run analysis again or start a new draft."
           action={
             <Link href={'/app/add-meal' as Route} className={buttonStyles({ variant: 'secondary' })}>
-              Start another draft
+              New draft
             </Link>
           }
         />
@@ -105,11 +105,14 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
       ) : null}
 
       <section aria-labelledby="draft-inputs-heading">
-        <ScreenHeader eyebrow="Inputs" title="Inputs" />
+        <details className="rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-soft">
+          <summary id="draft-inputs-heading" className="cursor-pointer text-sm font-semibold text-slate-900">
+            Original inputs
+          </summary>
 
-        <Stack gap="md">
-          {draft.assets.map((asset) => (
-            <Card key={asset.id} tone="subtle" className="overflow-hidden">
+          <Stack gap="md" className="mt-4">
+            {draft.assets.map((asset) => (
+              <Card key={asset.id} tone="subtle" className="overflow-hidden">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-950">{asset.label}</p>
@@ -153,9 +156,6 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-950">Transcript ready</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">
-                            This transcript feeds the same draft analysis path as typed text, and every extracted item still stays editable before save.
-                          </p>
                         </div>
                         <StatusPill tone="success">{asset.transcriptLanguage === 'tr' ? 'Turkish' : 'Transcript'}</StatusPill>
                       </div>
@@ -166,13 +166,8 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
                   {!asset.transcriptText && asset.transcriptStatus ? (
                     <StatePanel
                       variant={asset.transcriptStatus === 'failed' ? 'error' : 'loading'}
-                      title={asset.transcriptStatus === 'failed' ? 'Transcript needs another try' : 'Transcript is not available in this environment'}
-                      description={
-                        asset.transcriptMessage ??
-                        (asset.transcriptStatus === 'failed'
-                          ? 'The audio was saved, but the transcript could not be created for this draft.'
-                          : 'The audio was saved successfully, but transcription is not configured here yet.')
-                      }
+                      title={asset.transcriptStatus === 'failed' ? 'Transcript failed' : 'Transcript unavailable'}
+                      description={asset.transcriptMessage ?? 'Audio is saved.'}
                     />
                   ) : null}
                 </div>
@@ -181,9 +176,10 @@ export default async function MealDraftReviewPage({ params }: MealDraftReviewPag
               {asset.fileSizeBytes ? (
                 <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-400">{Math.max(1, Math.round(asset.fileSizeBytes / 1024))} KB</p>
               ) : null}
-            </Card>
-          ))}
-        </Stack>
+              </Card>
+            ))}
+          </Stack>
+        </details>
       </section>
     </Stack>
   );

@@ -14,9 +14,9 @@ export default function SignInPage({ searchParams }: SignInPageProps) {
   const noticeValue = Array.isArray(searchParams?.notice) ? searchParams?.notice[0] : searchParams?.notice;
   const notice =
     noticeValue === 'account-created'
-      ? 'Your account is ready. Sign in once to continue into today.'
+      ? 'Hesabın hazır. Devam etmek için giriş yap.'
       : noticeValue === 'session-required'
-        ? 'Sign in to continue to your daily tracking view.'
+        ? 'Devam etmek için giriş yap.'
         : null;
 
   return <SignInForm callbackUrl={getSafeRedirectPath(searchParams?.next)} defaultEmail={email} notice={notice} />;
