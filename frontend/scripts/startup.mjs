@@ -33,6 +33,7 @@ function validateStartupEnvironment() {
   const errors = [];
   const warnings = [];
   const runtimeAppUrl = getFirst(['NEXTAUTH_URL', 'AUTH_URL', 'NEXT_PUBLIC_APP_URL']);
+  const trustsForwardedHost = isEnabled(process.env.AUTH_TRUST_HOST, true);
 
   if (!resolvedDatabaseUrl) {
     const message = 'DATABASE_URL is missing.';
@@ -55,8 +56,10 @@ function validateStartupEnvironment() {
   }
 
   if (!runtimeAppUrl) {
-    const message = 'NEXTAUTH_URL or NEXT_PUBLIC_APP_URL is required to build auth callback URLs.';
-    if (normalizedNodeEnv === 'production') {
+    const message = trustsForwardedHost
+      ? 'NEXTAUTH_URL/NEXT_PUBLIC_APP_URL is not set. Startup will rely on AUTH_TRUST_HOST and forwarded host headers.'
+      : 'NEXTAUTH_URL or NEXT_PUBLIC_APP_URL is required to build auth callback URLs.';
+    if (normalizedNodeEnv === 'production' && !trustsForwardedHost) {
       errors.push(message);
     } else {
       warnings.push(message);

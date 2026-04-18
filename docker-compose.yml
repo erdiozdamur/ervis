@@ -25,7 +25,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}"
+      NODE_ENV: "production"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}?schema=public"
+      ALLOW_DESTRUCTIVE_BASELINE_RESET: "${ALLOW_DESTRUCTIVE_BASELINE_RESET:-false}"
     command: ["npm", "run", "db:migrate:deploy"]
     depends_on:
       postgres:
@@ -64,17 +66,23 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     environment:
+      NODE_ENV: "production"
       PORT: "3000"
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}?schema=public"
       AUTH_SECRET: "${AUTH_SECRET:-}"
       NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:-}"
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
       AUTH_TRUST_HOST: "${AUTH_TRUST_HOST:-true}"
-      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost}"
+      NEXT_PUBLIC_APP_URL: "${NEXT_PUBLIC_APP_URL:-}"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-}"
       AUTH_SESSION_MAX_AGE_DAYS: "${AUTH_SESSION_MAX_AGE_DAYS:-30}"
       AUTH_URL: "${AUTH_URL:-}"
       APP_TIME_ZONE: "${APP_TIME_ZONE:-Europe/Istanbul}"
       TZ: "${TZ:-Europe/Istanbul}"
+      APPLY_MIGRATIONS_ON_STARTUP: "false"
+      WAIT_FOR_DATABASE_ON_STARTUP: "${WAIT_FOR_DATABASE_ON_STARTUP:-true}"
+      STARTUP_DB_WAIT_TIMEOUT_MS: "${STARTUP_DB_WAIT_TIMEOUT_MS:-60000}"
+      STARTUP_DB_WAIT_INTERVAL_MS: "${STARTUP_DB_WAIT_INTERVAL_MS:-2000}"
       POSTGRES_USER: "${POSTGRES_USER:-ervis}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ervis}"
       POSTGRES_DB: "${POSTGRES_DB:-ervis}"
@@ -88,7 +96,7 @@ services:
         host_ip: 127.0.0.1
         protocol: tcp
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "const port=process.env.PORT||'3000'; fetch('http://127.0.0.1:'+port+'/healthz').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12

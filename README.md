@@ -122,7 +122,9 @@ The deployment-safe path is:
 
 - `DATABASE_URL`
 - `AUTH_SECRET`
-- `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL`
+
+`NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL` is strongly recommended.
+If you intentionally rely on forwarded host headers with `AUTH_TRUST_HOST=true`, startup now allows that path and logs a warning instead of failing.
 
 ### Recommended production env
 
@@ -156,6 +158,26 @@ The deployment-safe path is:
 - If the database is managed separately, point `DATABASE_URL` directly at that service
 - If migrations should run during release startup, keep `APPLY_MIGRATIONS_ON_STARTUP=true`
 - If migrations are handled by a separate release job, set `APPLY_MIGRATIONS_ON_STARTUP=false`
+
+### Root compose deployment notes
+
+The root [docker-compose.yml](/Users/erdi/Documents/repository/ervis/docker-compose.yml) is the Dokploy-oriented stack:
+
+- `migrator` runs `npm run db:migrate:deploy` explicitly before frontend starts
+- frontend startup keeps `APPLY_MIGRATIONS_ON_STARTUP=false` so migrations are not run twice
+- frontend healthcheck uses `/healthz`
+- both `migrator` and frontend use the same `DATABASE_URL` shape, including `?schema=public`
+
+If a throwaway deployment environment already contains an old incompatible schema and you intentionally want to wipe it, set:
+
+```bash
+ALLOW_DESTRUCTIVE_BASELINE_RESET=true
+```
+
+Important:
+
+- only use that on disposable environments
+- keep it `false` for real production databases unless you explicitly want a destructive rebuild
 
 ## Recommended local startup sequence
 
