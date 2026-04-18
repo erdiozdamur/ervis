@@ -10,7 +10,7 @@ export function getHealthPayload(): HealthResponse {
   return {
     status: 'ok',
     service: APP_NAME,
-    environment: env.NODE_ENV,
+    environment: env.APP_ENV ?? env.NODE_ENV,
     timeZone: env.APP_TIME_ZONE,
     dayKey: getAppDayKey(new Date()),
     timestamp: new Date().toISOString(),

@@ -3,6 +3,7 @@ import { DEFAULT_APP_TIME_ZONE } from '@/lib/config/app';
 
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_ENV: z.enum(['development', 'test', 'staging', 'production']).optional(),
   PORT: z.string().default('3000'),
   DATABASE_URL: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
@@ -42,6 +43,7 @@ export function getServerEnv(): ServerEnv {
 
   cachedEnv = serverEnvSchema.parse({
     NODE_ENV: process.env.NODE_ENV,
+    APP_ENV: process.env.APP_ENV,
     PORT: process.env.PORT,
     DATABASE_URL: process.env.DATABASE_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,

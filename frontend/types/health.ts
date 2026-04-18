@@ -1,7 +1,7 @@
 export type HealthResponse = {
   status: 'ok';
   service: string;
-  environment: 'development' | 'test' | 'production';
+  environment: 'development' | 'test' | 'staging' | 'production';
   timeZone: string;
   dayKey: string;
   timestamp: string;
