@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ./scripts/start-dev.mjs",
     "dev:local": "npm run db:start && npm run db:migrate:deploy && npm run dev",
     "build": "next build",
     "start": "next start",
