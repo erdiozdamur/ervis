@@ -169,6 +169,15 @@ The root [docker-compose.yml](/Users/erdi/Documents/repository/ervis/docker-comp
 - both `migrator` and frontend use the same `DATABASE_URL` shape, including `?schema=public`
 - if the database already matches the current managed app schema but Prisma history is missing, `migrator` will non-destructively mark the shipped migrations as applied before continuing
 - if Prisma detects a failed historical migration entry, deployment stays blocked unless you explicitly allow a destructive reset
+- Postgres host exposure is controlled with `POSTGRES_BIND_IP` and defaults to `127.0.0.1`
+
+If you need direct DBeaver access from another machine for a non-local environment, set:
+
+```bash
+POSTGRES_BIND_IP=0.0.0.0
+```
+
+Keep the default `127.0.0.1` binding when remote DB access is not required.
 
 If a throwaway deployment environment already contains an old incompatible schema and you intentionally want to wipe it, set:
 
