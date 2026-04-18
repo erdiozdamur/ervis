@@ -66,6 +66,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
     environment:
+      APP_ENV: "${APP_ENV:-development}"
       NODE_ENV: "production"
       PORT: "3000"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ervis}:${POSTGRES_PASSWORD:-ervis}@postgres:5432/${POSTGRES_DB:-ervis}?schema=public"
