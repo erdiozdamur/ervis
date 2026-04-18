@@ -1,7 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { getServerEnv } from '@/lib/env';
 import type { MealAnalysisContext, MealAnalysisStage2NutritionResolver } from '@/services/meal-analysis/contracts';
-import { createFoodCatalogSlug, estimateHeuristicMacros } from '@/services/meal-analysis/heuristics';
+import { estimateHeuristicMacros } from '@/services/meal-analysis/heuristics';
+import { resolveNutritionWithOpenAi } from '@/services/meal-analysis/openai-stage2-nutrition-service';
 import type { MealStage1Estimate, MealStage2ResolvedItem } from '@/types/meal-analysis';
 import {
   buildNutritionCacheKey,
@@ -209,7 +210,52 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         continue;
       }
 
-      const heuristic = estimateHeuristicMacros(normalization.normalizedQuery, item.quantityMultiplier);
+      let freshResolution:
+        | {
+            macros: MealStage2ResolvedItem['macros'];
+            confidence: number;
+            reasoning: string;
+            gramsEstimate: number | null;
+          }
+        | null = null;
+
+      try {
+        const aiResolution = await resolveNutritionWithOpenAi({
+          item: {
+            displayName: item.displayName,
+            normalizedQuery: normalization.normalizedQuery,
+            quantityText: item.quantityText,
+            quantityMultiplier: item.quantityMultiplier,
+            reasoning: item.reasoning,
+          },
+          mealContext: {
+            mealType: context.mealType,
+            consumedAtIso: context.consumedAt.toISOString(),
+            textContext: context.assets
+              .filter((asset) => item.sourceAssetIds.includes(asset.id) && Boolean(asset.textContent))
+              .map((asset) => asset.textContent as string),
+            sourceAssets: context.assets.filter((asset) => item.sourceAssetIds.includes(asset.id)),
+          },
+        });
+
+        freshResolution = {
+          macros: aiResolution.macros,
+          confidence: aiResolution.confidence,
+          reasoning: aiResolution.reasoning,
+          gramsEstimate: aiResolution.gramsEstimate > 0 ? roundNumericValue(aiResolution.gramsEstimate) : null,
+        };
+      } catch (error) {
+        const heuristic = estimateHeuristicMacros(normalization.normalizedQuery, item.quantityMultiplier);
+        warnings.push(
+          `"${item.displayName}" used a conservative fallback estimate because live nutrition resolution was unavailable.`,
+        );
+        freshResolution = {
+          macros: heuristic.macros,
+          confidence: heuristic.confidence,
+          reasoning: heuristic.reasoning,
+          gramsEstimate: null,
+        };
+      }
 
       const createdCacheEntry = await upsertSharedCache(db, {
         cacheKey,
@@ -219,16 +265,16 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         normalizedFoodEntryId: null,
         servingAmount: roundNumericValue(item.quantityMultiplier),
         servingUnit: item.quantityText ?? 'portion',
-        calories: heuristic.macros.calories,
-        proteinGrams: heuristic.macros.proteinGrams,
-        carbGrams: heuristic.macros.carbGrams,
-        fatGrams: heuristic.macros.fatGrams,
-        fiberGrams: heuristic.macros.fiberGrams,
+        calories: freshResolution.macros.calories,
+        proteinGrams: freshResolution.macros.proteinGrams,
+        carbGrams: freshResolution.macros.carbGrams,
+        fatGrams: freshResolution.macros.fatGrams,
+        fiberGrams: freshResolution.macros.fiberGrams,
         payloadJson: {
           resolutionMethod: 'fresh_analysis',
           resolvedBy: this.provider,
           resolvedAt: new Date().toISOString(),
-          matchConfidence: Math.min(normalization.normalizationConfidence, heuristic.confidence),
+          matchConfidence: Math.min(normalization.normalizationConfidence || freshResolution.confidence, freshResolution.confidence),
           matchedKeyword: normalization.matchedKeyword,
           normalizedFoodEntryId: null,
           catalogSlug: normalization.strategy === 'safe_variant_family' ? normalization.canonicalSlug : null,
@@ -236,7 +282,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           normalizationStrategy: normalization.strategy,
           removedDescriptors: normalization.removedDescriptors,
           contextMealId: context.mealId,
-          reasoning: heuristic.reasoning,
+          reasoning: freshResolution.reasoning,
         },
       });
 
@@ -250,20 +296,20 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         normalizedQuery: item.normalizedQuery,
         quantityText: item.quantityText,
         quantityMultiplier: item.quantityMultiplier,
-        gramsEstimate: item.gramsEstimate ?? null,
+        gramsEstimate: freshResolution.gramsEstimate ?? item.gramsEstimate ?? null,
         sourceAssetIds: item.sourceAssetIds,
-        confidence: Math.min(item.confidence, heuristic.confidence),
+        confidence: Math.min(item.confidence, freshResolution.confidence),
         unresolved: item.unresolved,
-        reasoning: `${item.reasoning} ${heuristic.reasoning}`,
+        reasoning: `${item.reasoning} ${freshResolution.reasoning}`,
         nutritionSource: 'FRESH_ANALYSIS',
         nutritionCacheEntryId: createdCacheEntry.id,
         normalizedFoodEntryId: null,
         resolutionMetadata: {
           method: 'fresh_analysis',
-          matchConfidence: Math.min(normalization.normalizationConfidence, heuristic.confidence),
+          matchConfidence: Math.min(normalization.normalizationConfidence || freshResolution.confidence, freshResolution.confidence),
           matchedKeyword: normalization.matchedKeyword,
         },
-        macros: heuristic.macros,
+        macros: freshResolution.macros,
       });
     }
 
