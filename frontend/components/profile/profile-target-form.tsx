@@ -31,10 +31,10 @@ function getDefaults(profile: ProfileSnapshot) {
 function GoalSummary({ targets }: { targets: DailyTargets }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <StatWidget label="Calories" value={`${targets.dailyCalories}`} helper="Daily target" tone="accent" />
+      <StatWidget label="Kalori" value={`${targets.dailyCalories}`} helper="Günlük hedef" tone="accent" />
       <StatWidget label="Protein" value={`${targets.proteinGrams} g`} helper={targets.explanation.proteinBasisLabel} />
-      <StatWidget label="Carbs" value={`${targets.carbGrams} g`} helper="Daily target" />
-      <StatWidget label="Fat" value={`${targets.fatGrams} g`} helper="Daily target" />
+      <StatWidget label="Karbonhidrat" value={`${targets.carbGrams} g`} helper="Günlük hedef" />
+      <StatWidget label="Yağ" value={`${targets.fatGrams} g`} helper="Günlük hedef" />
     </div>
   );
 }
@@ -71,7 +71,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
 
     if (!parsed.success) {
       setFieldErrors(flattenProfileFieldErrors(parsed.error) as ProfileFieldErrors);
-      setFormError('A few details need attention before the estimate can be updated.');
+      setFormError('Tahmini güncellemeden önce bazı alanları kontrol et.');
       return;
     }
 
@@ -88,12 +88,12 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
 
       if (!response.ok || !payload?.ok) {
         setFieldErrors(payload?.ok === false ? payload.fieldErrors ?? {} : {});
-        setFormError(payload?.ok === false ? payload.message : 'The profile could not be updated. Please try again.');
+        setFormError(payload?.ok === false ? payload.message : 'Profil güncellenemedi. Tekrar dene.');
         return;
       }
 
       setSavedProfile(payload.profile);
-      setFormSuccess('Targets updated. The rest of the app will now use this new daily starting point.');
+      setFormSuccess('Hedefler güncellendi. Uygulama artık bu günlük başlangıç noktasını kullanacak.');
     });
   }
 
@@ -101,30 +101,30 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
     <div className="space-y-6">
       {savedProfile.targets ? (
         <Card tone="hero">
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Current targets</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Current targets</h2>
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Güncel hedefler</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Güncel hedefler</h2>
 
           <div className="mt-6">
             <GoalSummary targets={savedProfile.targets} />
           </div>
 
           <p className="mt-5 text-sm text-slate-600">
-            Maintenance {savedProfile.targets.explanation.maintenanceCalories} kcal · {savedProfile.targets.explanation.goalAdjustmentLabel}
+            Koruma kalorisi {savedProfile.targets.explanation.maintenanceCalories} kcal · {savedProfile.targets.explanation.goalAdjustmentLabel}
           </p>
         </Card>
       ) : (
         <StatePanel
           variant="empty"
-          title="Set your profile once and start with sensible targets"
-          description="You can update this anytime. The goal is a clear, trustworthy estimate, not a medical prescription."
+          title="Profilini bir kez ayarla, dengeli hedeflerle başla"
+          description="İstediğin zaman güncelleyebilirsin. Bu hesap sadece başlangıç tahminidir, tıbbi öneri değildir."
         />
       )}
 
       <Card>
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Profile setup</p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Estimate your targets</h3>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Profil kurulumu</p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Hedeflerini hesapla</h3>
           </div>
 
           {formError ? (
@@ -139,7 +139,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
             <NumberField
               id="age"
               name="age"
-              label="Age"
+              label="Yaş"
               defaultValue={defaults.age}
               min={18}
               max={80}
@@ -149,7 +149,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
             <NumberField
               id="heightCm"
               name="heightCm"
-              label="Height"
+              label="Boy"
               defaultValue={defaults.heightCm}
               min={120}
               max={230}
@@ -162,7 +162,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           <NumberField
             id="weightKg"
             name="weightKg"
-            label="Weight"
+            label="Kilo"
             defaultValue={defaults.weightKg}
             min={35}
             max={300}
@@ -173,7 +173,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           />
 
           <ProfileChoiceGroup
-            label="Sex used for the estimate"
+            label="Hesaplamada kullanılan cinsiyet"
             name="sex"
             value={defaults.sex}
             options={sexOptions}
@@ -182,7 +182,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           />
 
           <ProfileChoiceGroup
-            label="Current goal"
+            label="Hedefin"
             name="goalType"
             value={defaults.goalType}
             options={goalTypeOptions}
@@ -190,7 +190,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           />
 
           <ProfileChoiceGroup
-            label="Typical activity level"
+            label="Günlük aktivite düzeyi"
             name="activityLevel"
             value={defaults.activityLevel}
             options={activityLevelOptions}
@@ -198,7 +198,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           />
 
           <ProfileChoiceGroup
-            label="Training sessions per week"
+            label="Haftalık antrenman sıklığı"
             name="trainingFrequencyPerWeek"
             value={defaults.trainingFrequencyPerWeek}
             options={trainingFrequencyOptions.map((option) => ({ ...option }))}
@@ -207,7 +207,7 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           />
 
           <Button type="submit" fullWidth disabled={isPending}>
-            {isPending ? 'Updating targets...' : 'Save targets'}
+            {isPending ? 'Hedefler güncelleniyor...' : 'Hedefleri kaydet'}
           </Button>
         </form>
       </Card>

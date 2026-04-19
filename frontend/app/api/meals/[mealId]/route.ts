@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: MealRouteContext) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const meal = await getOwnedMealEditorSnapshot(session.user.id, params.mealId);
@@ -49,7 +49,7 @@ export async function PATCH(request: Request, { params }: MealRouteContext) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -58,7 +58,7 @@ export async function PATCH(request: Request, { params }: MealRouteContext) {
   if (!parsed.success) {
     const response: MealUpdateResult = {
       ok: false,
-      message: 'Please check the highlighted meal details and try again.',
+      message: 'Lütfen işaretlenen öğün alanlarını kontrol edip tekrar dene.',
       fieldErrors: flattenMealFieldErrors(parsed.error),
     };
 
@@ -70,7 +70,7 @@ export async function PATCH(request: Request, { params }: MealRouteContext) {
   if (!updatedMeal) {
     const response: MealUpdateResult = {
       ok: false,
-      message: 'This meal could not be found for your account.',
+      message: 'Bu öğün hesabında bulunamadı.',
     };
 
     return NextResponse.json(response, { status: 404 });
@@ -83,7 +83,7 @@ export async function PUT(request: Request, { params }: MealRouteContext) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -92,7 +92,7 @@ export async function PUT(request: Request, { params }: MealRouteContext) {
   if (!parsed.success) {
     const response: MealSaveResult = {
       ok: false,
-      message: 'Please check the highlighted meal items and try again.',
+      message: 'Lütfen işaretlenen öğün satırlarını kontrol edip tekrar dene.',
       fieldErrors: flattenFinalMealFieldErrors(parsed.error),
     };
 
@@ -121,7 +121,7 @@ export async function DELETE(_request: Request, { params }: MealRouteContext) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const deleted = await deleteOwnedMeal(session.user.id, params.mealId);
@@ -129,7 +129,7 @@ export async function DELETE(_request: Request, { params }: MealRouteContext) {
   if (!deleted) {
     const response: MealDeleteResult = {
       ok: false,
-      message: 'This meal could not be found for your account.',
+      message: 'Bu öğün hesabında bulunamadı.',
     };
 
     return NextResponse.json(response, { status: 404 });

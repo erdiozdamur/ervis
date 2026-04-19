@@ -73,7 +73,7 @@ test('registerUser returns a stable email-taken response on duplicate email conf
     assert.equal(createdEmail, 'used@example.com');
     assert.equal(result.ok, false);
     assert.equal(result.ok === false ? result.code : null, 'EMAIL_TAKEN');
-    assert.equal(result.ok === false ? result.fieldErrors?.email : null, 'Use a different email or sign in instead.');
+    assert.equal(result.ok === false ? result.fieldErrors?.email : null, 'Farklı bir e-posta kullan ya da giriş yap.');
   } finally {
     userDelegate.create = originalCreate;
   }

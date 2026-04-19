@@ -117,7 +117,7 @@ export function SignInForm({ callbackUrl, defaultEmail, notice }: SignInFormProp
               type="email"
               autoComplete="email"
               inputMode="email"
-              label="Email"
+              label="E-posta"
               placeholder="ornek@mail.com"
               defaultValue={defaultEmail}
               error={fieldErrors.email}

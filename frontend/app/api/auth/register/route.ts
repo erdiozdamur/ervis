@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const response: RegisterUserResult = {
       ok: false,
       code: 'INVALID_INPUT',
-      message: 'Please fix the highlighted fields and try again.',
+      message: 'Lütfen işaretlenen alanları düzeltip tekrar dene.',
       fieldErrors: flattenFieldErrors(parsed.error),
     };
 

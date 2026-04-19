@@ -6,26 +6,26 @@ export const MAX_TOTAL_FILE_ASSET_COUNT = 8;
 export const mealInputMethodOptions = [
   {
     value: 'text',
-    title: 'Text',
-    description: 'Best when describing the meal is faster than taking a photo.',
+    title: 'Yazı',
+    description: 'Fotoğraf çekmek yerine kısa açıklama yazmak daha hızlıysa.',
     icon: 'text' as const,
   },
   {
     value: 'image',
-    title: 'Photo upload',
-    description: 'Add existing meal photos, labels, or screenshots.',
+    title: 'Fotoğraf yükle',
+    description: 'Galerideki fotoğraf, etiket veya ekran görüntüsünü ekle.',
     icon: 'photo' as const,
   },
   {
     value: 'camera',
-    title: 'Camera',
-    description: 'Open the mobile camera directly when the browser supports it.',
+    title: 'Kamera',
+    description: 'Tarayıcı destekliyorsa kamerayı doğrudan aç.',
     icon: 'camera' as const,
   },
   {
     value: 'audio',
-    title: 'Audio',
-    description: 'Upload or record a quick voice note about the meal.',
+    title: 'Ses',
+    description: 'Öğün için ses dosyası yükle veya hızlı bir ses notu kaydet.',
     icon: 'microphone' as const,
   },
 ] as const;

@@ -92,39 +92,39 @@ function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): MealDraftCreate
   const audioCount = binaryAssets.filter((asset) => asset.assetType === 'AUDIO').length;
 
   if (imageCount > MAX_IMAGE_ASSET_COUNT) {
-    return createValidationError(`You can attach up to ${MAX_IMAGE_ASSET_COUNT} images in one draft.`, {
-      images: `Keep the draft to ${MAX_IMAGE_ASSET_COUNT} images or fewer.`,
+    return createValidationError(`Bir taslağa en fazla ${MAX_IMAGE_ASSET_COUNT} görsel ekleyebilirsin.`, {
+      images: `Taslak en fazla ${MAX_IMAGE_ASSET_COUNT} görsel içerebilir.`,
     });
   }
 
   if (audioCount > MAX_AUDIO_ASSET_COUNT) {
-    return createValidationError(`You can attach up to ${MAX_AUDIO_ASSET_COUNT} audio files in one draft.`, {
-      audio: `Keep the draft to ${MAX_AUDIO_ASSET_COUNT} audio files or fewer.`,
+    return createValidationError(`Bir taslağa en fazla ${MAX_AUDIO_ASSET_COUNT} ses dosyası ekleyebilirsin.`, {
+      audio: `Taslak en fazla ${MAX_AUDIO_ASSET_COUNT} ses dosyası içerebilir.`,
     });
   }
 
   if (binaryAssets.length > MAX_TOTAL_FILE_ASSET_COUNT) {
-    return createValidationError(`You can attach up to ${MAX_TOTAL_FILE_ASSET_COUNT} files in one draft.`);
+    return createValidationError(`Bir taslağa en fazla ${MAX_TOTAL_FILE_ASSET_COUNT} dosya ekleyebilirsin.`);
   }
 
   for (const asset of binaryAssets) {
     if (asset.assetType === 'IMAGE' && !imageMimePattern.test(asset.file.type)) {
-      return createValidationError('One of the selected photos could not be accepted.', {
-        images: 'Only image files are allowed for photo and camera inputs.',
+      return createValidationError('Seçilen görsellerden biri kabul edilemedi.', {
+        images: 'Fotoğraf ve kamera girişlerinde sadece görsel dosyaları kabul edilir.',
       });
     }
 
     if (asset.assetType === 'AUDIO' && !audioMimePattern.test(asset.file.type)) {
-      return createValidationError('One of the selected audio files could not be accepted.', {
-        audio: 'Only audio files are allowed for the audio input.',
+      return createValidationError('Seçilen ses dosyalarından biri kabul edilemedi.', {
+        audio: 'Ses girişinde sadece ses dosyaları kabul edilir.',
       });
     }
 
     if (asset.file.size > maxFileSizeBytes) {
       const field = asset.assetType === 'IMAGE' ? 'images' : 'audio';
 
-      return createValidationError(`A selected file is larger than ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB.`, {
-        [field]: `Each file must stay under ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB.`,
+      return createValidationError(`Seçilen bir dosya ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB sınırını aşıyor.`, {
+        [field]: `Her dosya ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB altında olmalı.`,
       });
     }
   }
@@ -140,8 +140,8 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
   const audioRecordings = collectFiles(formData, 'audioRecordings');
 
   if (description.length > MAX_TEXT_INPUT_LENGTH) {
-    return createValidationError(`Text descriptions can be up to ${MAX_TEXT_INPUT_LENGTH} characters.`, {
-      description: `Keep the description under ${MAX_TEXT_INPUT_LENGTH} characters.`,
+    return createValidationError(`Yazı girişi en fazla ${MAX_TEXT_INPUT_LENGTH} karakter olabilir.`, {
+      description: `Açıklamayı ${MAX_TEXT_INPUT_LENGTH} karakter altında tut.`,
     });
   }
 
@@ -153,7 +153,7 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
   ];
 
   if (!description && binaryAssets.length === 0) {
-    return createValidationError('Add a description, a photo, or an audio note to start the meal draft.');
+    return createValidationError('Taslak başlatmak için yazı, fotoğraf veya ses notu ekle.');
   }
 
   const validationError = validateBinaryAssets(binaryAssets);

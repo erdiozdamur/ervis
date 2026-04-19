@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const formData = await request.formData().catch(() => null);
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        message: 'The draft could not be created from this request.',
+        message: 'Bu istekten taslak oluşturulamadı.',
       },
       { status: 400 },
     );
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        message: 'The draft could not be created right now. Please try again.',
+        message: 'Taslak şu anda oluşturulamadı. Lütfen tekrar dene.',
       },
       { status: 500 },
     );

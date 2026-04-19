@@ -3,28 +3,28 @@ import type { MealType } from '@prisma/client';
 export const mealTypeOptions = [
   {
     value: 'BREAKFAST',
-    label: 'Breakfast',
-    description: 'Morning meals and coffee stops.',
+    label: 'Kahvaltı',
+    description: 'Sabah öğünleri ve kısa kahve molaları.',
   },
   {
     value: 'LUNCH',
-    label: 'Lunch',
-    description: 'Midday meals that keep the day moving.',
+    label: 'Öğle',
+    description: 'Günü taşıyan öğle öğünleri.',
   },
   {
     value: 'DINNER',
-    label: 'Dinner',
-    description: 'Evening meals and larger plates.',
+    label: 'Akşam',
+    description: 'Akşam öğünleri ve daha büyük porsiyonlar.',
   },
   {
     value: 'SNACK',
-    label: 'Snack',
-    description: 'Small bites, treats, and quick top-ups.',
+    label: 'Atıştırma',
+    description: 'Küçük ara öğünler ve hızlı takviyeler.',
   },
   {
     value: 'OTHER',
-    label: 'Other',
-    description: 'Anything that does not fit neatly elsewhere.',
+    label: 'Diğer',
+    description: 'Diğer kategorilere uymayan girişler.',
   },
 ] as const satisfies Array<{
   value: MealType;

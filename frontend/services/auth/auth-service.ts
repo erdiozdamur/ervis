@@ -64,9 +64,9 @@ export async function registerUser(input: SignUpInput): Promise<RegisterUserResu
       return {
         ok: false,
         code: 'EMAIL_TAKEN',
-        message: 'An account already exists for this email address.',
+        message: 'Bu e-posta adresiyle zaten bir hesap var.',
         fieldErrors: {
-          email: 'Use a different email or sign in instead.',
+          email: 'Farklı bir e-posta kullan ya da giriş yap.',
         },
       };
     }

@@ -14,7 +14,7 @@ export async function POST(_request: Request, { params }: ConfirmMealRouteContex
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   try {
@@ -38,7 +38,7 @@ export async function POST(_request: Request, { params }: ConfirmMealRouteContex
     return NextResponse.json(
       {
         ok: false,
-        message: 'This meal could not be confirmed right now. Please try again.',
+        message: 'Öğün şu anda onaylanamadı. Lütfen tekrar dene.',
       } satisfies MealDraftConfirmResult,
       { status: 500 },
     );

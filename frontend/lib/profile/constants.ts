@@ -4,27 +4,27 @@ export const PROFILE_TIME_ZONE = 'Europe/Istanbul';
 export const PROFILE_CALCULATOR_VERSION = 'mifflin-v1';
 
 export const sexOptions: Array<{ value: ProfileSex; label: string; description: string }> = [
-  { value: 'FEMALE', label: 'Female', description: 'Used only for a simple energy estimate formula.' },
-  { value: 'MALE', label: 'Male', description: 'Used only for a simple energy estimate formula.' },
+  { value: 'FEMALE', label: 'Kadın', description: 'Sadece tahmini enerji hesabında kullanılır.' },
+  { value: 'MALE', label: 'Erkek', description: 'Sadece tahmini enerji hesabında kullanılır.' },
 ];
 
 export const goalTypeOptions: Array<{ value: ProfileGoalType; label: string; description: string }> = [
-  { value: 'LOSE_FAT', label: 'Lose fat', description: 'Sets a modest calorie reduction and keeps protein supportive.' },
-  { value: 'MAINTAIN', label: 'Maintain', description: 'A steady starting target for weight maintenance.' },
-  { value: 'GAIN_MUSCLE', label: 'Build muscle', description: 'Adds a modest calorie surplus with supportive macros.' },
+  { value: 'LOSE_FAT', label: 'Yağ kaybı', description: 'Orta seviyede kalori açığı ve dengeli protein hedefi.' },
+  { value: 'MAINTAIN', label: 'Koru', description: 'Kilonu korumaya yönelik dengeli başlangıç hedefi.' },
+  { value: 'GAIN_MUSCLE', label: 'Kas kazanımı', description: 'Orta seviyede kalori fazlası ve destekleyici makrolar.' },
 ];
 
 export const activityLevelOptions: Array<{ value: ProfileActivityLevel; label: string; description: string }> = [
-  { value: 'SEDENTARY', label: 'Mostly seated', description: 'Little planned movement most days.' },
-  { value: 'LIGHT', label: 'Lightly active', description: 'Some walking and light activity through the week.' },
-  { value: 'MODERATE', label: 'Moderately active', description: 'Regular movement or training most weeks.' },
-  { value: 'ACTIVE', label: 'Very active', description: 'Frequent movement, training, or physically active days.' },
-  { value: 'VERY_ACTIVE', label: 'Highly active', description: 'Hard training or a very active daily routine.' },
+  { value: 'SEDENTARY', label: 'Masa başı', description: 'Günlerin çoğunda planlı hareket az.' },
+  { value: 'LIGHT', label: 'Hafif aktif', description: 'Hafta boyunca yürüyüş ve hafif hareket var.' },
+  { value: 'MODERATE', label: 'Orta aktif', description: 'Çoğu hafta düzenli hareket veya antrenman var.' },
+  { value: 'ACTIVE', label: 'Çok aktif', description: 'Sık hareket, antrenman veya fiziksel yoğun günler.' },
+  { value: 'VERY_ACTIVE', label: 'Yüksek aktif', description: 'Yoğun antrenman veya çok hareketli günlük düzen.' },
 ];
 
 export const trainingFrequencyOptions = [
-  { value: 0, label: '0', description: 'No training sessions most weeks.' },
-  { value: 2, label: '1-2', description: 'A light training rhythm.' },
-  { value: 4, label: '3-4', description: 'A regular training rhythm.' },
-  { value: 6, label: '5+', description: 'Frequent training every week.' },
+  { value: 0, label: '0', description: 'Çoğu hafta antrenman yok.' },
+  { value: 2, label: '1-2', description: 'Hafif antrenman düzeni.' },
+  { value: 4, label: '3-4', description: 'Düzenli antrenman temposu.' },
+  { value: 6, label: '5+', description: 'Her hafta sık antrenman.' },
 ] as const;

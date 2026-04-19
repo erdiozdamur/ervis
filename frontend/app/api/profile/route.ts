@@ -9,7 +9,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const profile = await getUserProfileSnapshot(session.user.id);
@@ -20,7 +20,7 @@ export async function PUT(request: Request) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
+    return NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -29,7 +29,7 @@ export async function PUT(request: Request) {
   if (!parsed.success) {
     const response: ProfileUpdateResult = {
       ok: false,
-      message: 'Please check the highlighted inputs and try again.',
+      message: 'Lütfen işaretlenen alanları kontrol edip tekrar dene.',
       fieldErrors: flattenProfileFieldErrors(parsed.error),
     };
 

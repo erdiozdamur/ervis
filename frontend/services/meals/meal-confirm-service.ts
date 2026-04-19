@@ -67,7 +67,7 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
     return {
       ok: false,
       code: 'not_found',
-      message: 'This meal draft could not be found for your account.',
+      message: 'Bu öğün taslağı hesabında bulunamadı.',
     };
   }
 
@@ -77,7 +77,7 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
     return {
       ok: true,
       mealId: meal.id,
-      redirectTo: dayKey === getAppDayKey(new Date()) ? '/app' : `/app/history?day=${dayKey}`,
+      redirectTo: dayKey === getAppDayKey(new Date()) ? '/app' : `/app?day=${dayKey}`,
     };
   }
 
@@ -87,7 +87,7 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
     return {
       ok: false,
       code: 'conflict',
-      message: 'There is no reviewable draft result to confirm yet.',
+      message: 'Henüz onaylanabilecek bir taslak sonucu yok.',
     };
   }
 
@@ -120,6 +120,6 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
   return {
     ok: true,
     mealId: meal.id,
-    redirectTo: dayKey === getAppDayKey(new Date()) ? '/app' : `/app/history?day=${dayKey}`,
+    redirectTo: dayKey === getAppDayKey(new Date()) ? '/app' : `/app?day=${dayKey}`,
   };
 }

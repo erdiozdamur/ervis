@@ -193,7 +193,7 @@ test('confirmOwnedMealDraft persists final meal items inside a transaction', asy
   try {
     const result = await confirmOwnedMealDraft('user_1', 'meal_draft');
     const expectedDayKey = '2026-04-17';
-    const expectedRedirect = expectedDayKey === getAppDayKey(new Date()) ? '/app' : `/app/history?day=${expectedDayKey}`;
+    const expectedRedirect = expectedDayKey === getAppDayKey(new Date()) ? '/app' : `/app?day=${expectedDayKey}`;
 
     assert.equal(result.ok, true);
     assert.equal(deletedMealId, 'meal_draft');

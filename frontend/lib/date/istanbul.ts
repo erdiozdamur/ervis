@@ -1,6 +1,6 @@
 import { DEFAULT_APP_TIME_ZONE } from '@/lib/config/app';
 
-const dateLabelFormatter = new Intl.DateTimeFormat('en-US', {
+const dateLabelFormatter = new Intl.DateTimeFormat('tr-TR', {
   timeZone: DEFAULT_APP_TIME_ZONE,
   weekday: 'long',
   month: 'long',
@@ -14,10 +14,11 @@ const dayKeyFormatter = new Intl.DateTimeFormat('en-US', {
   day: '2-digit',
 });
 
-const timeLabelFormatter = new Intl.DateTimeFormat('en-US', {
+const timeLabelFormatter = new Intl.DateTimeFormat('tr-TR', {
   timeZone: DEFAULT_APP_TIME_ZONE,
-  hour: 'numeric',
+  hour: '2-digit',
   minute: '2-digit',
+  hourCycle: 'h23',
 });
 
 const timeInputFormatter = new Intl.DateTimeFormat('en-GB', {

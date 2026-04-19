@@ -144,7 +144,7 @@ export function SignUpForm({ callbackUrl }: SignUpFormProps) {
               type="email"
               autoComplete="email"
               inputMode="email"
-              label="Email"
+              label="E-posta"
               placeholder="ornek@mail.com"
               error={fieldErrors.email}
             />

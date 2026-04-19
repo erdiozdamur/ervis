@@ -134,7 +134,7 @@ export async function getOwnedMealEditorSnapshot(userId: string, mealId: string)
     status: meal.status,
     dayKey: getAppDayKey(meal.mealDate),
     dateLabel: formatDateInAppTimeZone(meal.mealDate),
-    title: meal.title ?? 'Meal',
+    title: meal.title ?? 'Öğün',
     mealType: meal.mealType,
     consumedTime: formatTimeInputInAppTimeZone(meal.consumedAt),
     notes: meal.notes,
@@ -159,7 +159,7 @@ export async function updateOwnedFinalMeal(userId: string, mealId: string, input
     return {
       ok: false,
       code: 'not_found',
-      message: 'This meal could not be found for your account.',
+      message: 'Bu öğün hesabında bulunamadı.',
     };
   }
 
@@ -167,7 +167,7 @@ export async function updateOwnedFinalMeal(userId: string, mealId: string, input
     return {
       ok: false,
       code: 'conflict',
-      message: 'Only confirmed meals can be edited here. Draft meals should stay in the draft review flow.',
+      message: 'Burada sadece onaylı öğünler düzenlenebilir. Taslak öğünleri taslak akışından yönet.',
     };
   }
 
@@ -203,6 +203,6 @@ export async function updateOwnedFinalMeal(userId: string, mealId: string, input
   return {
     ok: true,
     mealId: existingMeal.id,
-    redirectTo: input.dayKey === getAppDayKey(new Date()) ? '/app' : `/app/history?day=${input.dayKey}`,
+    redirectTo: input.dayKey === getAppDayKey(new Date()) ? '/app' : `/app?day=${input.dayKey}`,
   };
 }

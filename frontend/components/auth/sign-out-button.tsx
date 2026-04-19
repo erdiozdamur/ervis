@@ -22,7 +22,7 @@ export function SignOutButton({ fullWidth = false }: SignOutButtonProps) {
         });
       }}
     >
-      {isPending ? 'Signing out...' : 'Sign out'}
+      {isPending ? 'Çıkış yapılıyor...' : 'Çıkış yap'}
     </button>
   );
 }

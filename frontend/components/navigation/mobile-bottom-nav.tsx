@@ -11,7 +11,11 @@ export function MobileBottomNav() {
   const columnClass = appNavigationItems.length === 2 ? 'grid-cols-2' : 'grid-cols-4';
 
   return (
-    <nav aria-label="Primary" className="pointer-events-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-6">
+    <nav
+      aria-label="Primary"
+      data-mobile-bottom-nav
+      className="pointer-events-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-6"
+    >
       <div className={cn('mx-auto grid max-w-[28rem] items-end gap-2 rounded-[30px] border border-white/85 bg-white/92 p-2 shadow-floating backdrop-blur-2xl', columnClass)}>
         {appNavigationItems.map((item) => {
           const isActive = pathname === item.href;

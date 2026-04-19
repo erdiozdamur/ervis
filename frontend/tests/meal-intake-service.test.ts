@@ -6,7 +6,7 @@ test('createMealDraftFromIntake rejects empty intake gracefully', async () => {
   const result = await createMealDraftFromIntake('user_1', new FormData());
 
   assert.equal(result.ok, false);
-  assert.equal(result.ok === false ? result.message : null, 'Add a description, a photo, or an audio note to start the meal draft.');
+  assert.equal(result.ok === false ? result.message : null, 'Taslak başlatmak için yazı, fotoğraf veya ses notu ekle.');
 });
 
 test('createMealDraftFromIntake rejects unsupported image uploads before persistence starts', async () => {
@@ -16,7 +16,7 @@ test('createMealDraftFromIntake rejects unsupported image uploads before persist
   const result = await createMealDraftFromIntake('user_1', formData);
 
   assert.equal(result.ok, false);
-  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Only image files are allowed for photo and camera inputs.');
+  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Fotoğraf ve kamera girişlerinde sadece görsel dosyaları kabul edilir.');
 });
 
 test('createMealDraftFromIntake enforces the per-draft image limit', async () => {
@@ -29,5 +29,5 @@ test('createMealDraftFromIntake enforces the per-draft image limit', async () =>
   const result = await createMealDraftFromIntake('user_1', formData);
 
   assert.equal(result.ok, false);
-  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Keep the draft to 6 images or fewer.');
+  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Taslak en fazla 6 görsel içerebilir.');
 });

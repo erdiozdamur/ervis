@@ -4,8 +4,8 @@ import { z } from 'zod';
 const nameSchema = z
   .string()
   .trim()
-  .min(2, 'Name should be at least 2 characters.')
-  .max(60, 'Name should be 60 characters or fewer.')
+  .min(2, 'Ad en az 2 karakter olmalı.')
+  .max(60, 'Ad en fazla 60 karakter olabilir.')
   .optional()
   .or(z.literal(''))
   .transform((value) => {
@@ -16,16 +16,16 @@ const nameSchema = z
 const emailSchema = z
   .string()
   .trim()
-  .min(1, 'Email is required.')
-  .email('Enter a valid email address.')
+  .min(1, 'E-posta zorunlu.')
+  .email('Geçerli bir e-posta adresi gir.')
   .transform((value) => value.toLowerCase());
 
 const passwordSchema = z
   .string()
-  .min(8, 'Password should be at least 8 characters.')
-  .max(128, 'Password should be 128 characters or fewer.')
-  .refine((value) => /[A-Za-z]/.test(value), 'Password should include at least one letter.')
-  .refine((value) => /\d/.test(value), 'Password should include at least one number.');
+  .min(8, 'Şifre en az 8 karakter olmalı.')
+  .max(128, 'Şifre en fazla 128 karakter olabilir.')
+  .refine((value) => /[A-Za-z]/.test(value), 'Şifre en az bir harf içermeli.')
+  .refine((value) => /\d/.test(value), 'Şifre en az bir rakam içermeli.');
 
 export const signInSchema = z.object({
   email: emailSchema,
@@ -37,13 +37,13 @@ export const signUpSchema = z
     name: nameSchema,
     email: emailSchema,
     password: passwordSchema,
-    confirmPassword: z.string().min(1, 'Please confirm your password.'),
+    confirmPassword: z.string().min(1, 'Lütfen şifreni tekrar gir.'),
   })
   .superRefine(({ password, confirmPassword }, context) => {
     if (password !== confirmPassword) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Passwords must match.',
+        message: 'Şifreler aynı olmalı.',
         path: ['confirmPassword'],
       });
     }

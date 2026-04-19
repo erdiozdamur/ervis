@@ -4,17 +4,17 @@ import type { DailyTargets } from '@/types/profile';
 import type { ProfileFormInput } from '@/lib/profile/validation';
 
 const activityMultiplierMap: Record<ProfileActivityLevel, { multiplier: number; label: string }> = {
-  SEDENTARY: { multiplier: 1.2, label: 'Mostly seated days' },
-  LIGHT: { multiplier: 1.35, label: 'Light activity through the week' },
-  MODERATE: { multiplier: 1.5, label: 'Moderate weekly activity' },
-  ACTIVE: { multiplier: 1.7, label: 'Very active weekly routine' },
-  VERY_ACTIVE: { multiplier: 1.9, label: 'Highly active training or lifestyle' },
+  SEDENTARY: { multiplier: 1.2, label: 'Çoğunlukla masa başı günler' },
+  LIGHT: { multiplier: 1.35, label: 'Hafta içinde hafif aktivite' },
+  MODERATE: { multiplier: 1.5, label: 'Haftalık orta düzey aktivite' },
+  ACTIVE: { multiplier: 1.7, label: 'Haftalık çok aktif rutin' },
+  VERY_ACTIVE: { multiplier: 1.9, label: 'Yoğun antrenman veya çok aktif yaşam' },
 };
 
 const goalAdjustmentMap: Record<ProfileGoalType, { multiplier: number; label: string }> = {
-  LOSE_FAT: { multiplier: 0.85, label: 'A modest calorie reduction for fat loss' },
-  MAINTAIN: { multiplier: 1, label: 'A maintenance-style starting point' },
-  GAIN_MUSCLE: { multiplier: 1.1, label: 'A modest calorie surplus for muscle gain' },
+  LOSE_FAT: { multiplier: 0.85, label: 'Yağ kaybı için kontrollü kalori açığı' },
+  MAINTAIN: { multiplier: 1, label: 'Kilo koruma odaklı başlangıç' },
+  GAIN_MUSCLE: { multiplier: 1.1, label: 'Kas kazanımı için kontrollü kalori fazlası' },
 };
 
 function roundToNearest25(value: number) {
@@ -68,7 +68,7 @@ export function calculateDailyTargets(input: ProfileFormInput): DailyTargets {
       maintenanceCalories: roundToNearest25(maintenanceCalories),
       goalAdjustmentLabel: goal.label,
       activityLabel: activity.label,
-      proteinBasisLabel: `${proteinFactor.toFixed(1)} g protein per kg body weight`,
+      proteinBasisLabel: `Kg başına ${proteinFactor.toFixed(1)} g protein`,
     },
   };
 }

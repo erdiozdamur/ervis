@@ -257,7 +257,7 @@ export function MealEditorExperience({ initialMeal }: MealEditorExperienceProps)
         return;
       }
 
-      router.push((dayKey === getAppDayKey(new Date()) ? '/app' : `/app/history?day=${dayKey}`) as Route);
+      router.push((dayKey === getAppDayKey(new Date()) ? '/app' : `/app?day=${dayKey}`) as Route);
       router.refresh();
     });
   }

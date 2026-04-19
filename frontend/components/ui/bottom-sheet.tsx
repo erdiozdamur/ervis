@@ -44,7 +44,7 @@ export function BottomSheet({ open, onClose, title, description, children, foote
     <div className="fixed inset-0 z-40 animate-fade-up">
       <button
         type="button"
-        aria-label="Close sheet"
+        aria-label="Paneli kapat"
         className="absolute inset-0 bg-slate-950/30 backdrop-blur-sm"
         onClick={onClose}
       />
