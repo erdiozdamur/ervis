@@ -53,6 +53,7 @@ type MealEntryFormProps = {
   initialMethod?: MealInputMethod;
   autoCapture?: boolean;
   embedded?: boolean;
+  compact?: boolean;
   autoConfirmDraft?: boolean;
   onCompleted?: () => void;
 };
@@ -61,6 +62,7 @@ export function MealEntryForm({
   initialMethod = 'camera',
   autoCapture = false,
   embedded = false,
+  compact = false,
   autoConfirmDraft = false,
   onCompleted,
 }: MealEntryFormProps) {
@@ -621,6 +623,7 @@ export function MealEntryForm({
         ) : null}
       </Card>
 
+      {!compact ? (
       <Card tone="subtle">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -709,6 +712,7 @@ export function MealEntryForm({
           </div>
         ) : null}
       </Card>
+      ) : null}
 
       {formError ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{formError}</div>

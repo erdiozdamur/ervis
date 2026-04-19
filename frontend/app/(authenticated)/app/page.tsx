@@ -53,6 +53,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <>
+      <MealLogWidget />
+
       <Stack gap="xl">
         <section aria-labelledby="dashboard-title">
           <ScreenHeader eyebrow="Panel" title="Kalori Takip Paneli" />
@@ -212,8 +214,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </Stack>
         </section>
       </Stack>
-
-      <MealLogWidget />
     </>
   );
 }
