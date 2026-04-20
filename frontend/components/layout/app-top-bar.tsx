@@ -1,5 +1,4 @@
 import { Card } from '@/components/ui/card';
-import { StatusPill } from '@/components/ui/status-pill';
 import { formatDateInAppTimeZone } from '@/lib/date/istanbul';
 
 type AppTopBarProps = {
@@ -11,16 +10,26 @@ type AppTopBarProps = {
 
 function getInitials(name?: string | null, email?: string | null) {
   const source = name?.trim() || email?.trim() || 'U';
+  const parts = source
+    .split(/[\s@._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+  }
+
   return source.slice(0, 2).toUpperCase();
 }
 
-function getFirstName(name?: string | null) {
-  return name?.trim().split(/\s+/)[0] ?? null;
+function getDisplayName(name?: string | null, email?: string | null) {
+  return name?.trim() || email?.trim() || null;
 }
 
 export function AppTopBar({ user }: AppTopBarProps) {
   const now = new Date();
-  const firstName = getFirstName(user.name);
+  const displayName = getDisplayName(user.name, user.email);
+  const formattedDate = formatDateInAppTimeZone(now);
 
   return (
     <Card tone="hero" className="hairline px-2.5 py-1 sm:px-4 sm:py-3">
@@ -30,13 +39,11 @@ export function AppTopBar({ user }: AppTopBarProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <StatusPill tone="success" className="px-2 py-0.5 text-[8px] tracking-[0.15em] sm:px-2.5 sm:py-1 sm:text-[10px] sm:tracking-[0.18em]">
-              Bugün
-            </StatusPill>
-            {firstName ? <p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-xs sm:tracking-[0.16em]">{firstName}</p> : null}
+          <p className="truncate text-sm font-semibold text-slate-950 sm:hidden">{formattedDate}</p>
+          <div className="hidden min-w-0 items-center gap-3 sm:flex">
+            {displayName ? <p className="truncate text-sm font-semibold text-slate-950 sm:text-base">{displayName}</p> : null}
+            <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{formattedDate}</p>
           </div>
-          <p className="mt-1 hidden truncate text-sm font-semibold text-slate-950 sm:mt-2 sm:block sm:text-base">{formatDateInAppTimeZone(now)}</p>
         </div>
       </div>
     </Card>

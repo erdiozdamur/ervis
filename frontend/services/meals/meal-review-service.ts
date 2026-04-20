@@ -1,6 +1,7 @@
 import type { MealInputAssetType } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 import { formatDateInAppTimeZone, formatTimeInAppTimeZone, getAppDayKey } from '@/lib/date/istanbul';
+import { normalizeDraftResultTitle } from '@/lib/meals/draft-title';
 import type { MealDraftReview } from '@/types/meal-intake';
 import type { MealDraftAnalysisResult } from '@/types/meal-analysis';
 
@@ -87,7 +88,8 @@ export async function getMealDraftReview(userId: string, mealId: string): Promis
   }
 
   const latestRun = meal.analysisRuns[0] ?? null;
-  const draftResult = latestRun?.draftResultJson as MealDraftAnalysisResult | null;
+  const rawDraftResult = latestRun?.draftResultJson as MealDraftAnalysisResult | null;
+  const draftResult = rawDraftResult ? normalizeDraftResultTitle(rawDraftResult) : null;
 
   return {
     mealId: meal.id,

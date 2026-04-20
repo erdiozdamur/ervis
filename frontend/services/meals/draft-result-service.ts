@@ -1,4 +1,5 @@
 import { prisma } from '@/db/prisma';
+import { normalizeDraftResultTitle, normalizeMealTitleSuggestion } from '@/lib/meals/draft-title';
 import { inferQuantityMultiplierFromText } from '@/lib/meals/draft-review';
 import type {
   MealDraftAnalysisResult,
@@ -95,7 +96,7 @@ export async function updateLatestOwnedMealDraftResult(
     };
   }
 
-  const currentDraftResult = latestRun.draftResultJson as MealDraftAnalysisResult;
+  const currentDraftResult = normalizeDraftResultTitle(latestRun.draftResultJson as MealDraftAnalysisResult);
 
   if (currentDraftResult.contractVersion !== 'meal-draft-result-v1') {
     return {
@@ -141,7 +142,7 @@ export async function updateLatestOwnedMealDraftResult(
   const updatedDraftResult: MealDraftAnalysisResult = {
     ...currentDraftResult,
     mealTypeSuggestion: input.mealTypeSuggestion,
-    titleSuggestion: input.titleSuggestion,
+    titleSuggestion: normalizeMealTitleSuggestion(input.titleSuggestion, input.mealTypeSuggestion),
     items: updatedItems,
     totals: sumDraftItemMacros(updatedItems),
   };

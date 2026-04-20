@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getServerEnv } from '@/lib/env';
+import { getDefaultMealTitleSuggestion } from '@/lib/meals/draft-title';
 import type { MealAnalysisContext, MealAnalysisStage1Estimator, Stage1ItemFactoryInput } from '@/services/meal-analysis/contracts';
 import { normalizeFoodQuery, parseTextIntoFoodSegments, suggestMealTypeFromConsumedAt } from '@/services/meal-analysis/heuristics';
 import { extractMealItemsFromImageWithOpenAi } from '@/services/meal-analysis/openai-stage1-image-itemizer';
@@ -106,21 +107,6 @@ function assetLabel(source: string | null, fallback: string) {
   if (source === 'recording') return 'Voice note meal item';
   if (source === 'upload') return `Uploaded ${fallback.toLowerCase()} item`;
   return fallback;
-}
-
-function getMealTitleSuggestion(mealType: MealAnalysisContext['mealType']) {
-  switch (mealType) {
-    case 'BREAKFAST':
-      return 'Kahvaltı';
-    case 'LUNCH':
-      return 'Öğle yemeği';
-    case 'DINNER':
-      return 'Akşam yemeği';
-    case 'SNACK':
-      return 'Ara öğün';
-    default:
-      return 'Öğün';
-  }
 }
 
 function getImageFallbackPortionLabel(context: MealAnalysisContext, labelHint: string | null) {
@@ -419,7 +405,7 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
     }
 
     const mealTypeSuggestion = suggestMealTypeFromConsumedAt(context.consumedAt);
-    const mealTitleSuggestion = getMealTitleSuggestion(mealTypeSuggestion);
+    const mealTitleSuggestion = getDefaultMealTitleSuggestion(mealTypeSuggestion);
 
     return {
       stage: 'stage_1_estimation' as const,
