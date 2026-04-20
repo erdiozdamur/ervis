@@ -156,7 +156,7 @@ test('stage 2 reuses shared catalog entries before fresh resolution', async () =
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'LUNCH',
-      mealTitleSuggestion: 'Öğle taslağı',
+      mealTitleSuggestion: 'Öğle yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -219,7 +219,7 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -294,7 +294,7 @@ test('stage 2 keeps generic fallback photo items reviewable instead of renaming 
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -350,7 +350,7 @@ test('stage 2 falls back to heuristic values when live nutrition resolution is u
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -403,7 +403,7 @@ test('stage 2 falls back to heuristic macros when live resolver returns authenti
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -467,7 +467,7 @@ test('stage 2 reuses shared cache across safe food variants', async () => {
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -509,7 +509,7 @@ test('stage 2 resolves known branded menu items from local shared catalog when l
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'LUNCH',
-      mealTitleSuggestion: 'Öğle taslağı',
+      mealTitleSuggestion: 'Öğle yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -568,7 +568,7 @@ test('stage 2 replaces placeholder names with Turkish catalog names', async () =
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -637,7 +637,7 @@ test('stage 2 skips shared catalog promotion for generic fallback photo items', 
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -702,7 +702,7 @@ test('stage 2 skips shared cache reuse for generic fallback photo items', async 
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
@@ -773,7 +773,7 @@ test('stage 2 does not write shared cache entries for generic fallback photo ite
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Akşam taslağı',
+      mealTitleSuggestion: 'Akşam yemeği',
       warnings: [],
       estimatedItems: [
         {
