@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { MealInputMethod } from '@/lib/meals/intake';
@@ -29,6 +29,12 @@ export function MealLogWidget() {
   const [dockOffset, setDockOffset] = useState(FALLBACK_DOCK_OFFSET);
   const [expanded, setExpanded] = useState(false);
   const [activeMethod, setActiveMethod] = useState<MealInputMethod | null>(null);
+  const formId = useId();
+  const [submitState, setSubmitState] = useState({
+    canSubmit: false,
+    isPending: false,
+    label: 'Öğünü kaydet',
+  });
 
   useEffect(() => {
     setIsPortalReady(true);
@@ -181,18 +187,26 @@ export function MealLogWidget() {
         onClose={() => setActiveMethod(null)}
         title={activeMethod ? methodTitle[activeMethod] : 'Öğün ekle'}
         footer={
-          <Button variant="secondary" fullWidth onClick={() => setActiveMethod(null)}>
-            Kapat
-          </Button>
+          <div className="flex gap-3">
+            <Button type="submit" form={formId} fullWidth disabled={!submitState.canSubmit}>
+              {submitState.label}
+            </Button>
+            <Button variant="secondary" fullWidth onClick={() => setActiveMethod(null)}>
+              Kapat
+            </Button>
+          </div>
         }
       >
         {activeMethod ? (
           <MealEntryForm
+            formId={formId}
             embedded
             compact
+            hideEmbeddedSubmit
             initialMethod={activeMethod}
             autoCapture={activeMethod === 'camera'}
             autoConfirmDraft
+            onSubmitStateChange={setSubmitState}
             onCompleted={() => {
               setActiveMethod(null);
               router.refresh();
