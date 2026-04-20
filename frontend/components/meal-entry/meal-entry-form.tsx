@@ -400,7 +400,18 @@ export function MealEntryForm({
         return;
       }
 
-      if (autoConfirmDraft) {
+      const canAutoConfirm = payload.analysisStatus === 'SUCCEEDED' && Boolean(payload.draftResult);
+
+      if (autoConfirmDraft && !canAutoConfirm) {
+        setFormError(
+          payload.analysisErrorMessage ??
+            'Analiz tamamlanamadı. Taslak kaydedildi; lütfen inceleme ekranından analizi yeniden çalıştır.',
+        );
+        router.push(payload.reviewRoute as Route);
+        return;
+      }
+
+      if (autoConfirmDraft && canAutoConfirm) {
         const confirmResponse = await fetch(`/api/meals/${payload.mealId}/confirm`, {
           method: 'POST',
         });

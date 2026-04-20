@@ -145,7 +145,7 @@ function parseStructuredNutritionPayload(payload: unknown): OpenAiResolvedNutrit
     throw new Error('The nutrition model response did not include macros.');
   }
 
-  return {
+  const parsed = {
     canonicalName:
       typeof data.canonicalName === 'string' && data.canonicalName.trim() ? data.canonicalName.trim() : 'Resolved meal item',
     servingSummary:
@@ -164,6 +164,12 @@ function parseStructuredNutritionPayload(payload: unknown): OpenAiResolvedNutrit
       fiberGrams: roundMacro(typeof macros.fiberGrams === 'number' ? macros.fiberGrams : 0),
     },
   };
+
+  if (parsed.macros.calories <= 0) {
+    throw new Error('The nutrition model response returned a non-positive calorie estimate.');
+  }
+
+  return parsed;
 }
 
 function buildUserPrompt(input: OpenAiResolutionInput) {

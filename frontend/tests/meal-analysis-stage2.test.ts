@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DefaultMealStage2NutritionResolver } from '@/services/meal-analysis/default-stage2-nutrition-resolver';
+import { MealAnalysisError } from '@/services/meal-analysis/errors';
 import { buildNutritionCacheKey, resolveFoodNormalization } from '@/services/meal-analysis/shared-nutrition';
 
 function createFakeDb({
@@ -183,7 +184,26 @@ test('stage 2 reuses shared catalog entries before fresh resolution', async () =
 });
 
 test('stage 2 stores fresh analysis output for future reuse when no shared match exists', async () => {
-  const resolver = new DefaultMealStage2NutritionResolver();
+  class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
+    protected override async resolveFreshNutritionWithProvider() {
+      return {
+        canonicalName: 'Chicken wrap',
+        servingSummary: '1 wrap',
+        gramsEstimate: 260,
+        confidence: 0.86,
+        reasoning: 'Resolved from model output.',
+        macros: {
+          calories: 520,
+          proteinGrams: 28,
+          carbGrams: 44,
+          fatGrams: 24,
+          fiberGrams: 4,
+        },
+      };
+    }
+  }
+
+  const resolver = new TestStage2Resolver();
   const db = createFakeDb({});
 
   const result = await resolver.resolve(
@@ -222,8 +242,63 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
   assert.equal(result.resolvedItems[0]?.nutritionSource, 'FRESH_ANALYSIS');
   assert.equal(result.resolvedItems[0]?.nutritionCacheEntryId, 'cache_1');
   assert.equal(result.resolvedItems[0]?.resolutionMetadata.method, 'fresh_analysis');
+  assert.equal(result.resolvedItems[0]?.macros.calories, 520);
   assert.equal(db._cache[0]?.cacheKey, buildNutritionCacheKey('chicken wrap', 1));
   assert.equal(db._foods.length, 0);
+});
+
+test('stage 2 fails fast when live nutrition resolution is unavailable', async () => {
+  class FailingStage2Resolver extends DefaultMealStage2NutritionResolver {
+    protected override resolveFreshNutritionWithProvider(
+      input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0],
+    ): Promise<never> {
+      void input;
+      return Promise.reject(new Error('provider unavailable'));
+    }
+  }
+
+  const resolver = new FailingStage2Resolver();
+  const db = createFakeDb({});
+
+  await assert.rejects(
+    () =>
+      resolver.resolve(
+        {
+          mealId: 'meal_4',
+          userId: 'user_4',
+          analysisRunId: 'run_4',
+          consumedAt: new Date(),
+          mealType: 'DINNER',
+          assets: [],
+        },
+        {
+          stage: 'stage_1_estimation',
+          provider: 'heuristic-stage1',
+          model: 'test-model',
+          mealTypeSuggestion: 'DINNER',
+          mealTitleSuggestion: 'Dinner draft',
+          warnings: [],
+          estimatedItems: [
+            {
+              id: 'item_4',
+              displayName: 'Unknown meal',
+              normalizedQuery: 'unknown meal',
+              quantityText: '1 porsiyon',
+              quantityMultiplier: 1,
+              sourceAssetIds: ['asset_4'],
+              confidence: 0.5,
+              unresolved: true,
+              reasoning: 'Derived from weak input.',
+            },
+          ],
+        },
+        db as never,
+      ),
+    (error: unknown) =>
+      error instanceof MealAnalysisError &&
+      error.code === 'analysis_stage2_live_resolution_failed' &&
+      error.stage === 'stage_2_nutrition_resolution',
+  );
 });
 
 test('resolveFoodNormalization safely canonicalizes strong food variants', () => {
@@ -288,4 +363,46 @@ test('stage 2 reuses shared cache across safe food variants', async () => {
   assert.equal(result.resolvedItems[0]?.nutritionSource, 'CACHE');
   assert.equal(result.resolvedItems[0]?.nutritionCacheEntryId, 'cache_steak');
   assert.equal(result.resolvedItems[0]?.resolutionMetadata.matchedKeyword, 'ızgara biftek');
+});
+
+test('stage 2 resolves known branded menu items from local shared catalog when live provider is unavailable', async () => {
+  const resolver = new DefaultMealStage2NutritionResolver();
+  const db = createFakeDb({});
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_5',
+      userId: 'user_5',
+      analysisRunId: 'run_5',
+      consumedAt: new Date(),
+      mealType: 'LUNCH',
+      assets: [],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'LUNCH',
+      mealTitleSuggestion: 'Lunch draft',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_5',
+          displayName: 'Big mac menü',
+          normalizedQuery: 'big mac menü',
+          quantityText: '1 menü',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_5'],
+          confidence: 0.8,
+          unresolved: false,
+          reasoning: 'Derived from typed text.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems[0]?.nutritionSource, 'CATALOG');
+  assert.equal(result.resolvedItems[0]?.resolutionMetadata.method, 'shared_catalog');
+  assert.ok((result.resolvedItems[0]?.macros.calories ?? 0) > 0);
 });

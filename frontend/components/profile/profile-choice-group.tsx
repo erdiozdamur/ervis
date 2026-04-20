@@ -15,6 +15,7 @@ type ProfileChoiceGroupProps<T extends string | number> = {
   options: Array<Option<T>>;
   error?: string;
   columns?: 1 | 2;
+  onChange?: (value: T) => void;
 };
 
 export function ProfileChoiceGroup<T extends string | number>({
@@ -24,6 +25,7 @@ export function ProfileChoiceGroup<T extends string | number>({
   options,
   error,
   columns = 1,
+  onChange,
 }: ProfileChoiceGroupProps<T>) {
   return (
     <fieldset className="space-y-3">
@@ -46,7 +48,8 @@ export function ProfileChoiceGroup<T extends string | number>({
                 type="radio"
                 name={name}
                 value={String(option.value)}
-                defaultChecked={isActive}
+                checked={isActive}
+                onChange={() => onChange?.(option.value)}
                 className="sr-only"
               />
               <div className="text-sm font-semibold">{option.label}</div>

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/options';
 import { flattenProfileFieldErrors, profileFormSchema } from '@/lib/profile/validation';
@@ -37,5 +38,7 @@ export async function PUT(request: Request) {
   }
 
   const profile = await upsertUserProfileWithTargets(session.user.id, parsed.data);
+  revalidatePath('/app', 'layout');
+  revalidatePath('/app/profile');
   return NextResponse.json({ ok: true, profile } satisfies ProfileUpdateResult, { status: 200 });
 }

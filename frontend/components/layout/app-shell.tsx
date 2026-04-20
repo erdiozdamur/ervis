@@ -9,11 +9,12 @@ type AppShellProps = {
     name?: string | null;
     email?: string | null;
   };
+  needsProfileCompletion?: boolean;
 };
 
-export function AppShell({ children, user }: AppShellProps) {
+export function AppShell({ children, user, needsProfileCompletion = false }: AppShellProps) {
   return (
-    <MobileAppShell footer={<MobileBottomNav />} className="pb-36">
+    <MobileAppShell footer={<MobileBottomNav needsProfileCompletion={needsProfileCompletion} />} className="pb-36">
       <div className="sticky safe-top top-0 z-20 -mx-1 mb-5">
         <AppTopBar user={user} />
       </div>

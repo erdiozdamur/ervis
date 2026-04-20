@@ -2,6 +2,7 @@
 
 import type { FormEvent } from 'react';
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StatePanel } from '@/components/ui/state-panel';
@@ -40,8 +41,13 @@ function GoalSummary({ targets }: { targets: DailyTargets }) {
 }
 
 export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
+  const router = useRouter();
   const defaults = useMemo(() => getDefaults(initialProfile), [initialProfile]);
   const [savedProfile, setSavedProfile] = useState<ProfileSnapshot>(initialProfile);
+  const [selectedSex, setSelectedSex] = useState(defaults.sex);
+  const [selectedGoalType, setSelectedGoalType] = useState(defaults.goalType);
+  const [selectedActivityLevel, setSelectedActivityLevel] = useState(defaults.activityLevel);
+  const [selectedTrainingFrequency, setSelectedTrainingFrequency] = useState(defaults.trainingFrequencyPerWeek);
   const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -61,12 +67,12 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
     const formData = new FormData(event.currentTarget);
     const parsed = profileFormSchema.safeParse({
       age: formData.get('age'),
-      sex: formData.get('sex'),
+      sex: selectedSex,
       heightCm: formData.get('heightCm'),
       weightKg: formData.get('weightKg'),
-      goalType: formData.get('goalType'),
-      activityLevel: formData.get('activityLevel'),
-      trainingFrequencyPerWeek: formData.get('trainingFrequencyPerWeek'),
+      goalType: selectedGoalType,
+      activityLevel: selectedActivityLevel,
+      trainingFrequencyPerWeek: selectedTrainingFrequency,
     });
 
     if (!parsed.success) {
@@ -93,7 +99,13 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
       }
 
       setSavedProfile(payload.profile);
+      const nextDefaults = getDefaults(payload.profile);
+      setSelectedSex(nextDefaults.sex);
+      setSelectedGoalType(nextDefaults.goalType);
+      setSelectedActivityLevel(nextDefaults.activityLevel);
+      setSelectedTrainingFrequency(nextDefaults.trainingFrequencyPerWeek);
       setFormSuccess('Hedefler güncellendi. Uygulama artık bu günlük başlangıç noktasını kullanacak.');
+      router.refresh();
     });
   }
 
@@ -175,35 +187,39 @@ export function ProfileTargetForm({ initialProfile }: ProfileTargetFormProps) {
           <ProfileChoiceGroup
             label="Hesaplamada kullanılan cinsiyet"
             name="sex"
-            value={defaults.sex}
+            value={selectedSex}
             options={sexOptions}
             columns={2}
             error={fieldErrors.sex}
+            onChange={setSelectedSex}
           />
 
           <ProfileChoiceGroup
             label="Hedefin"
             name="goalType"
-            value={defaults.goalType}
+            value={selectedGoalType}
             options={goalTypeOptions}
             error={fieldErrors.goalType}
+            onChange={setSelectedGoalType}
           />
 
           <ProfileChoiceGroup
             label="Günlük aktivite düzeyi"
             name="activityLevel"
-            value={defaults.activityLevel}
+            value={selectedActivityLevel}
             options={activityLevelOptions}
             error={fieldErrors.activityLevel}
+            onChange={setSelectedActivityLevel}
           />
 
           <ProfileChoiceGroup
             label="Haftalık antrenman sıklığı"
             name="trainingFrequencyPerWeek"
-            value={defaults.trainingFrequencyPerWeek}
+            value={selectedTrainingFrequency}
             options={trainingFrequencyOptions.map((option) => ({ ...option }))}
             columns={2}
             error={fieldErrors.trainingFrequencyPerWeek}
+            onChange={setSelectedTrainingFrequency}
           />
 
           <Button type="submit" fullWidth disabled={isPending}>

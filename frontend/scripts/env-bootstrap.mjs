@@ -74,7 +74,7 @@ export function isEnabled(raw, defaultValue = true) {
 export function loadRuntimeEnv(mode = process.env.NODE_ENV ?? 'development') {
   const protectedKeys = new Set(Object.keys(process.env));
   const layeredValues = {};
-  const envFiles = ['.env', `.env.${mode}`];
+  const envFiles = ['../.env', `../.env.${mode}`, '.env', `.env.${mode}`];
 
   if (mode !== 'test') {
     envFiles.push('.env.local');
@@ -86,12 +86,15 @@ export function loadRuntimeEnv(mode = process.env.NODE_ENV ?? 'development') {
     const nextValues = parseEnvFile(filePath);
 
     for (const [key, value] of Object.entries(nextValues)) {
-      layeredValues[key] = value;
+      if (isPresent(value)) {
+        layeredValues[key] = value;
+      }
     }
   }
 
   for (const [key, value] of Object.entries(layeredValues)) {
-    if (!protectedKeys.has(key)) {
+    const hasProtectedValue = protectedKeys.has(key) && isPresent(process.env[key]);
+    if (!hasProtectedValue && isPresent(value)) {
       process.env[key] = value;
     }
   }

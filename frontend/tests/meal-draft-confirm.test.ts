@@ -206,3 +206,79 @@ test('confirmOwnedMealDraft persists final meal items inside a transaction', asy
     transactionDelegate.$transaction = originalTransaction;
   }
 });
+
+test('confirmOwnedMealDraft rejects draft results with non-positive total calories', async () => {
+  const mealDelegate = prisma.meal as unknown as {
+    findFirst: (args: { where: { id: string; userId: string } }) => Promise<unknown>;
+  };
+  const originalFindFirst = mealDelegate.findFirst;
+
+  mealDelegate.findFirst = async () => ({
+    id: 'meal_zero',
+    mealDate: new Date(),
+    status: 'DRAFT',
+    analysisRuns: [
+      {
+        draftResultJson: {
+          contractVersion: 'meal-draft-result-v1',
+          mealId: 'meal_zero',
+          analysisRunId: 'run_zero',
+          editable: true,
+          mealTypeSuggestion: 'LUNCH',
+          titleSuggestion: 'Lunch',
+          warnings: [],
+          totals: {
+            calories: 0,
+            proteinGrams: 0,
+            carbGrams: 0,
+            fatGrams: 0,
+            fiberGrams: 0,
+          },
+          stageTrace: {
+            stage1: { provider: 'heuristic', model: 'test', warningCount: 0, itemCount: 1 },
+            stage2: { provider: 'heuristic', model: 'test', warningCount: 0, itemCount: 1, unresolvedItemCount: 0 },
+          },
+          generatedAt: new Date().toISOString(),
+          items: [
+            {
+              id: 'item_zero',
+              displayName: 'Unknown meal',
+              normalizedQuery: 'unknown meal',
+              quantityText: '1 porsiyon',
+              quantityMultiplier: 1,
+              gramsEstimate: null,
+              sourceAssetIds: ['asset_1'],
+              confidence: 0.2,
+              unresolved: true,
+              reasoning: 'Invalid zero-calorie draft',
+              nutritionSource: 'USER_REVIEW',
+              nutritionCacheEntryId: null,
+              normalizedFoodEntryId: null,
+              resolutionMetadata: {
+                method: 'user_review',
+                matchConfidence: 1,
+                matchedKeyword: null,
+              },
+              macros: {
+                calories: 0,
+                proteinGrams: 0,
+                carbGrams: 0,
+                fatGrams: 0,
+                fiberGrams: 0,
+              },
+            },
+          ],
+        } satisfies MealDraftAnalysisResult,
+      },
+    ],
+  });
+
+  try {
+    const result = await confirmOwnedMealDraft('user_1', 'meal_zero');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false ? result.code : null, 'conflict');
+  } finally {
+    mealDelegate.findFirst = originalFindFirst;
+  }
+});

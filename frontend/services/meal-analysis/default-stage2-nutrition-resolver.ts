@@ -1,21 +1,47 @@
 import type { PrismaClient } from '@prisma/client';
 import { getServerEnv } from '@/lib/env';
 import type { MealAnalysisContext, MealAnalysisStage2NutritionResolver } from '@/services/meal-analysis/contracts';
-import { estimateHeuristicMacros } from '@/services/meal-analysis/heuristics';
+import { MealAnalysisError } from '@/services/meal-analysis/errors';
 import { resolveNutritionWithOpenAi } from '@/services/meal-analysis/openai-stage2-nutrition-service';
 import type { MealStage1Estimate, MealStage2ResolvedItem } from '@/types/meal-analysis';
 import {
   buildNutritionCacheKey,
+  getSharedCatalogCandidate,
   hasCompleteMacros,
   roundNumericValue,
   resolveFoodNormalization,
   scaleResolvedMacros,
+  shouldPromoteSharedCatalogCandidate,
   scoreFoodCatalogEntryMatch,
   toResolvedMacros,
   type PersistableCacheShape,
+  type SharedCatalogCandidate,
 } from '@/services/meal-analysis/shared-nutrition';
 
 const SHARED_CATALOG_MATCH_THRESHOLD = 0.94;
+const LEGACY_FALLBACK_MACROS = {
+  calories: 240,
+  proteinGrams: 12,
+  carbGrams: 22,
+  fatGrams: 10,
+  fiberGrams: 2,
+} as const;
+
+function isLegacyFallbackCacheEntry(values: {
+  calories: number | null;
+  proteinGrams: number | null;
+  carbGrams: number | null;
+  fatGrams: number | null;
+  fiberGrams: number | null;
+}) {
+  return (
+    values.calories === LEGACY_FALLBACK_MACROS.calories &&
+    values.proteinGrams === LEGACY_FALLBACK_MACROS.proteinGrams &&
+    values.carbGrams === LEGACY_FALLBACK_MACROS.carbGrams &&
+    values.fatGrams === LEGACY_FALLBACK_MACROS.fatGrams &&
+    values.fiberGrams === LEGACY_FALLBACK_MACROS.fiberGrams
+  );
+}
 
 async function touchCacheEntry(db: PrismaClient, cacheKey: string) {
   await db.nutritionCacheEntry.update({
@@ -99,9 +125,60 @@ async function findSharedCatalogMatch(
   return scored ?? null;
 }
 
+async function ensureHeuristicCatalogEntry(db: PrismaClient, candidate: SharedCatalogCandidate) {
+  return db.foodCatalogEntry.upsert({
+    where: {
+      slug: candidate.slug,
+    },
+    update: {
+      canonicalName: candidate.canonicalName,
+      source: candidate.source,
+      defaultServingAmount: roundNumericValue(candidate.defaultServingAmount ?? 1),
+      defaultServingUnit: candidate.defaultServingUnit ?? 'portion',
+      calories: roundNumericValue(candidate.macros.calories),
+      proteinGrams: roundNumericValue(candidate.macros.proteinGrams),
+      carbGrams: roundNumericValue(candidate.macros.carbGrams),
+      fatGrams: roundNumericValue(candidate.macros.fatGrams),
+      fiberGrams: roundNumericValue(candidate.macros.fiberGrams),
+    },
+    create: {
+      slug: candidate.slug,
+      canonicalName: candidate.canonicalName,
+      source: candidate.source,
+      defaultServingAmount: roundNumericValue(candidate.defaultServingAmount ?? 1),
+      defaultServingUnit: candidate.defaultServingUnit ?? 'portion',
+      calories: roundNumericValue(candidate.macros.calories),
+      proteinGrams: roundNumericValue(candidate.macros.proteinGrams),
+      carbGrams: roundNumericValue(candidate.macros.carbGrams),
+      fatGrams: roundNumericValue(candidate.macros.fatGrams),
+      fiberGrams: roundNumericValue(candidate.macros.fiberGrams),
+      metadataJson: {
+        origin: 'heuristic_catalog_seed',
+        matchedKeyword: candidate.matchedKeyword,
+      },
+    },
+    select: {
+      id: true,
+      canonicalName: true,
+      slug: true,
+      source: true,
+      defaultServingAmount: true,
+      defaultServingUnit: true,
+      calories: true,
+      proteinGrams: true,
+      carbGrams: true,
+      fatGrams: true,
+      fiberGrams: true,
+    },
+  });
+}
+
 export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2NutritionResolver {
   provider = 'shared-nutrition-stage2';
   model = getServerEnv().MEAL_ANALYSIS_STAGE2_MODEL;
+  protected async resolveFreshNutritionWithProvider(input: Parameters<typeof resolveNutritionWithOpenAi>[0]) {
+    return resolveNutritionWithOpenAi(input);
+  }
 
   async resolve(context: MealAnalysisContext, estimate: MealStage1Estimate, db: PrismaClient) {
     const warnings = [...estimate.warnings];
@@ -123,7 +200,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         },
       });
 
-      if (cached) {
+      if (cached && !isLegacyFallbackCacheEntry(toResolvedMacros(cached))) {
         await touchCacheEntry(db, cacheKey);
 
         resolvedItems.push({
@@ -210,6 +287,64 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         continue;
       }
 
+      const heuristicCandidate = getSharedCatalogCandidate(normalization.normalizedQuery);
+      if (heuristicCandidate && shouldPromoteSharedCatalogCandidate(normalization.normalizedQuery, heuristicCandidate)) {
+        const heuristicCatalogEntry = await ensureHeuristicCatalogEntry(db, heuristicCandidate);
+        const scaledMacros = scaleResolvedMacros(toResolvedMacros(heuristicCatalogEntry), item.quantityMultiplier);
+        const createdCacheEntry = await upsertSharedCache(db, {
+          cacheKey,
+          normalizedQueryText: normalization.canonicalQuery,
+          source: heuristicCatalogEntry.source,
+          provider: this.provider,
+          normalizedFoodEntryId: heuristicCatalogEntry.id,
+          servingAmount: roundNumericValue(Number(heuristicCatalogEntry.defaultServingAmount ?? 1) * item.quantityMultiplier),
+          servingUnit: heuristicCatalogEntry.defaultServingUnit ?? item.quantityText ?? 'portion',
+          calories: scaledMacros.calories,
+          proteinGrams: scaledMacros.proteinGrams,
+          carbGrams: scaledMacros.carbGrams,
+          fatGrams: scaledMacros.fatGrams,
+          fiberGrams: scaledMacros.fiberGrams,
+          payloadJson: {
+            resolutionMethod: 'shared_catalog',
+            resolvedBy: this.provider,
+            resolvedAt: new Date().toISOString(),
+            matchConfidence: heuristicCandidate.confidence,
+            matchedKeyword: heuristicCandidate.matchedKeyword,
+            normalizedFoodEntryId: heuristicCatalogEntry.id,
+            catalogSlug: heuristicCatalogEntry.slug,
+            cacheIdentity: normalization.cacheIdentity,
+            normalizationStrategy: normalization.strategy,
+            removedDescriptors: normalization.removedDescriptors,
+            contextMealId: context.mealId,
+            reasoning: heuristicCandidate.reasoning,
+          },
+        });
+
+        resolvedItems.push({
+          id: item.id,
+          displayName: item.displayName,
+          normalizedQuery: item.normalizedQuery,
+          quantityText: item.quantityText,
+          quantityMultiplier: item.quantityMultiplier,
+          gramsEstimate: item.gramsEstimate ?? null,
+          sourceAssetIds: item.sourceAssetIds,
+          confidence: Math.min(0.95, Math.max(item.confidence, heuristicCandidate.confidence)),
+          unresolved: item.unresolved,
+          reasoning: `${item.reasoning} Nutrition resolved from shared local food catalog.`,
+          nutritionSource: 'CATALOG',
+          nutritionCacheEntryId: createdCacheEntry.id,
+          normalizedFoodEntryId: heuristicCatalogEntry.id,
+          resolutionMetadata: {
+            method: 'shared_catalog',
+            matchConfidence: heuristicCandidate.confidence,
+            matchedKeyword: heuristicCandidate.matchedKeyword,
+          },
+          macros: scaledMacros,
+        });
+
+        continue;
+      }
+
       let freshResolution:
         | {
             macros: MealStage2ResolvedItem['macros'];
@@ -220,7 +355,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         | null = null;
 
       try {
-        const aiResolution = await resolveNutritionWithOpenAi({
+        const aiResolution = await this.resolveFreshNutritionWithProvider({
           item: {
             displayName: item.displayName,
             normalizedQuery: normalization.normalizedQuery,
@@ -245,16 +380,12 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           gramsEstimate: aiResolution.gramsEstimate > 0 ? roundNumericValue(aiResolution.gramsEstimate) : null,
         };
       } catch (error) {
-        const heuristic = estimateHeuristicMacros(normalization.normalizedQuery, item.quantityMultiplier);
-        warnings.push(
-          `"${item.displayName}" used a conservative fallback estimate because live nutrition resolution was unavailable.`,
-        );
-        freshResolution = {
-          macros: heuristic.macros,
-          confidence: heuristic.confidence,
-          reasoning: heuristic.reasoning,
-          gramsEstimate: null,
-        };
+        throw new MealAnalysisError({
+          code: 'analysis_stage2_live_resolution_failed',
+          stage: 'stage_2_nutrition_resolution',
+          message: `Live nutrition resolution failed for "${item.displayName}".`,
+          details: error,
+        });
       }
 
       const createdCacheEntry = await upsertSharedCache(db, {

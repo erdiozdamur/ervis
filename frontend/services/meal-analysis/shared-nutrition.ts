@@ -115,7 +115,7 @@ export function getSharedCatalogCandidate(normalizedQuery: string) {
   };
 }
 
-export type SharedCatalogCandidate = ReturnType<typeof getSharedCatalogCandidate>;
+export type SharedCatalogCandidate = NonNullable<ReturnType<typeof getSharedCatalogCandidate>>;
 
 export function shouldPromoteSharedCatalogCandidate(
   normalizedQuery: string,

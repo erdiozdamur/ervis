@@ -91,6 +91,15 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
     };
   }
 
+  const totalCalories = draftResult.items.reduce((sum, item) => sum + (item.macros.calories || 0), 0);
+  if (totalCalories <= 0) {
+    return {
+      ok: false,
+      code: 'conflict',
+      message: 'Taslak kalori bilgisi sıfır görünüyor. Lütfen analizi yeniden çalıştır veya öğeyi düzenle.',
+    };
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.mealItem.deleteMany({
       where: {
