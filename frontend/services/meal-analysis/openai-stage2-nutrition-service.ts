@@ -1,5 +1,6 @@
 import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
+import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
 import type { MealAnalysisAssetInput, ResolvedNutritionMacros } from '@/types/meal-analysis';
 
@@ -114,8 +115,9 @@ export function parseStructuredNutritionPayload(payload: unknown): OpenAiResolve
   }
 
   const parsed = {
-    canonicalName:
-      typeof data.canonicalName === 'string' && data.canonicalName.trim() ? data.canonicalName.trim() : 'Resolved meal item',
+    canonicalName: localizeFoodDisplayName(
+      typeof data.canonicalName === 'string' && data.canonicalName.trim() ? data.canonicalName.trim() : 'Çözümlenen besin',
+    ),
     servingSummary:
       typeof data.servingSummary === 'string' && data.servingSummary.trim() ? data.servingSummary.trim() : '1 serving',
     gramsEstimate: typeof data.gramsEstimate === 'number' ? Math.max(0, data.gramsEstimate) : 0,
@@ -213,6 +215,7 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
         'You are resolving nutrition for a mobile calorie tracking app.',
         'Return nutrition for exactly one reviewable meal item.',
         'Be practical and realistic for Turkish daily eating patterns and globally known branded fast foods.',
+        'Return canonicalName in Turkish.',
         'If the item clearly refers to a branded combo or menu, estimate the full combo unless the text excludes fries or drink.',
         'If quantity text is colloquial, infer a plausible single-user serving.',
         'Do not return implausibly low placeholder values.',

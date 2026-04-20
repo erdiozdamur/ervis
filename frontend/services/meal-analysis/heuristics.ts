@@ -33,6 +33,7 @@ const turkishNumberMap = new Map<string, number>([
 const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   {
     canonicalName: 'Egg',
+    localizedName: 'Yumurta',
     slug: 'egg',
     keywords: ['egg', 'eggs', 'omelette', 'yumurta', 'omlet'],
     macros: { calories: 78, proteinGrams: 6, carbGrams: 1, fatGrams: 5, fiberGrams: 0 },
@@ -43,6 +44,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Chicken breast',
+    localizedName: 'Tavuk göğsü',
     slug: 'chicken-breast',
     keywords: ['chicken', 'grilled chicken', 'chicken breast', 'tavuk', 'izgara tavuk', 'tavuk gogus', 'tavuk göğüs'],
     safeVariantKeywords: ['grilled chicken', 'izgara tavuk', 'tavuk gogus', 'tavuk göğüs'],
@@ -54,6 +56,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Rice pilaf',
+    localizedName: 'Pilav',
     slug: 'rice-pilaf',
     keywords: ['rice', 'pilaf', 'bulgur', 'pilav', 'pirinc pilavi', 'pirinç pilavı', 'bulgur pilavi', 'bulgur pilavı'],
     macros: { calories: 205, proteinGrams: 4, carbGrams: 45, fatGrams: 0, fiberGrams: 1 },
@@ -64,6 +67,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Bread',
+    localizedName: 'Ekmek',
     slug: 'bread',
     keywords: ['bread', 'toast', 'bagel', 'sourdough', 'ekmek', 'tost'],
     macros: { calories: 95, proteinGrams: 4, carbGrams: 18, fatGrams: 1, fiberGrams: 2 },
@@ -74,6 +78,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Salad',
+    localizedName: 'Salata',
     slug: 'salad',
     keywords: ['salad', 'greens', 'salata', 'yesillik', 'yeşillik'],
     macros: { calories: 80, proteinGrams: 3, carbGrams: 10, fatGrams: 3, fiberGrams: 3 },
@@ -84,6 +89,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Yogurt drink',
+    localizedName: 'Ayran',
     slug: 'yogurt-drink',
     keywords: ['yogurt', 'ayran', 'yoğurt', 'yoghurt'],
     macros: { calories: 110, proteinGrams: 8, carbGrams: 9, fatGrams: 4, fiberGrams: 0 },
@@ -94,6 +100,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Milk coffee',
+    localizedName: 'Sütlü kahve',
     slug: 'milk-coffee',
     keywords: ['coffee', 'latte', 'cappuccino', 'kahve', 'sutlu kahve', 'sütlü kahve'],
     macros: { calories: 60, proteinGrams: 3, carbGrams: 5, fatGrams: 3, fiberGrams: 0 },
@@ -104,6 +111,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Fresh fruit',
+    localizedName: 'Meyve',
     slug: 'fresh-fruit',
     keywords: ['apple', 'banana', 'orange', 'fruit', 'elma', 'muz', 'portakal', 'meyve'],
     macros: { calories: 95, proteinGrams: 1, carbGrams: 25, fatGrams: 0, fiberGrams: 3 },
@@ -114,6 +122,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Big Mac menu',
+    localizedName: 'Big Mac menü',
     slug: 'big-mac-menu',
     keywords: [
       'big mac menu',
@@ -133,6 +142,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Wrap or sandwich',
+    localizedName: 'Dürüm veya sandviç',
     slug: 'wrap-sandwich',
     keywords: ['wrap', 'sandwich', 'burger', 'durum', 'döner wrap', 'sandvic', 'sandviç', 'burger'],
     macros: { calories: 360, proteinGrams: 18, carbGrams: 34, fatGrams: 16, fiberGrams: 3 },
@@ -143,6 +153,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Lentil soup',
+    localizedName: 'Mercimek çorbası',
     slug: 'lentil-soup',
     keywords: ['mercimek corbasi', 'mercimek çorbası', 'corba', 'çorba', 'soup'],
     safeVariantKeywords: ['mercimek corbasi', 'mercimek çorbası', 'lentil soup'],
@@ -154,6 +165,7 @@ const heuristicFoodTemplates: HeuristicFoodTemplate[] = [
   },
   {
     canonicalName: 'Beef steak',
+    localizedName: 'Biftek',
     slug: 'beef-steak',
     keywords: ['biftek', 'dana biftek', 'izgara biftek', 'ızgara biftek', 'steak', 'beef steak', 'grilled steak'],
     safeVariantKeywords: ['dana biftek', 'izgara biftek', 'ızgara biftek', 'grilled steak', 'beef steak'],
@@ -200,6 +212,17 @@ export function findHeuristicFoodTemplateMatch(normalizedQuery: string) {
     .sort((left, right) => right.keyword.length - left.keyword.length)[0];
 
   return matched ?? null;
+}
+
+export function localizeFoodDisplayName(value: string) {
+  const normalizedValue = normalizeFoodQuery(value);
+  const matched = normalizedValue ? findHeuristicFoodTemplateMatch(normalizedValue) : null;
+
+  if (matched) {
+    return matched.template.localizedName;
+  }
+
+  return sentenceCase(value);
 }
 
 function normalizeQuantityMultiplier(amount: number, unit: string | null) {

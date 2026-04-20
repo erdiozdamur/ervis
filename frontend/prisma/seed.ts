@@ -12,7 +12,7 @@ async function main() {
   const sharedFoods = [
     {
       slug: 'egg',
-      canonicalName: 'Egg',
+      canonicalName: 'Yumurta',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'piece',
@@ -24,7 +24,7 @@ async function main() {
     },
     {
       slug: 'yogurt-drink',
-      canonicalName: 'Yogurt drink',
+      canonicalName: 'Ayran',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'glass',
@@ -36,7 +36,7 @@ async function main() {
     },
     {
       slug: 'rice-pilaf',
-      canonicalName: 'Rice pilaf',
+      canonicalName: 'Pilav',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'plate',
@@ -48,7 +48,7 @@ async function main() {
     },
     {
       slug: 'lentil-soup',
-      canonicalName: 'Lentil soup',
+      canonicalName: 'Mercimek çorbası',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'bowl',
@@ -60,7 +60,7 @@ async function main() {
     },
     {
       slug: 'chicken-breast',
-      canonicalName: 'Chicken breast',
+      canonicalName: 'Tavuk göğsü',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'portion',
@@ -72,7 +72,7 @@ async function main() {
     },
     {
       slug: 'beef-steak',
-      canonicalName: 'Beef steak',
+      canonicalName: 'Biftek',
       source: 'OFFICIAL_DATASET' as const,
       defaultServingAmount: 1,
       defaultServingUnit: 'portion',

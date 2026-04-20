@@ -1,5 +1,6 @@
 import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
+import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
 import type { MealAnalysisAssetInput } from '@/types/meal-analysis';
 
@@ -88,7 +89,8 @@ export function parseStructuredPayload(payload: unknown): OpenAiImageItemization
       }
 
       const row = entry as Record<string, unknown>;
-      const displayName = typeof row.displayName === 'string' ? row.displayName.trim() : '';
+      const rawDisplayName = typeof row.displayName === 'string' ? row.displayName.trim() : '';
+      const displayName = rawDisplayName ? localizeFoodDisplayName(rawDisplayName) : '';
       if (!displayName) {
         return [];
       }
@@ -155,7 +157,7 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
       instructions: [
         'You are a food-item detector for a Turkish calorie tracking app.',
         'Identify distinct foods visible in the photo as separate list entries.',
-        'Use Turkish display names when possible.',
+        'Use Turkish display names.',
         'Do not include file names, camera labels, or generic placeholders.',
         'Estimate practical single-person quantities for home/restaurant portions.',
         'quantityMultiplier must be a serving-scale number (e.g. 1, 0.5, 1.5, 2).',

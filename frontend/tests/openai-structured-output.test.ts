@@ -26,8 +26,26 @@ test('stage 1 parser accepts top-level output_parsed payloads', () => {
   });
 
   assert.equal(result.items.length, 2);
-  assert.equal(result.items[0]?.displayName, 'Izgara tavuk');
+  assert.equal(result.items[0]?.displayName, 'Tavuk göğsü');
   assert.equal(result.items[1]?.displayName, 'Pilav');
+});
+
+test('stage 1 parser localizes known English food names into Turkish', () => {
+  const result = parseStructuredPayload({
+    output_parsed: {
+      items: [
+        {
+          displayName: 'Rice pilaf',
+          quantityText: '1 plate',
+          quantityMultiplier: 1,
+          confidence: 0.8,
+          reasoning: 'Detected from photo.',
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.displayName, 'Pilav');
 });
 
 test('stage 2 parser accepts structured content parts without output_text', () => {
@@ -57,7 +75,7 @@ test('stage 2 parser accepts structured content parts without output_text', () =
     ],
   });
 
-  assert.equal(result.canonicalName, 'Mercimek corbasi');
+  assert.equal(result.canonicalName, 'Mercimek çorbası');
   assert.equal(result.servingSummary, '1 kase');
   assert.equal(result.macros.calories, 180);
   assert.equal(result.gramsEstimate, 260);

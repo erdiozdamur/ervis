@@ -34,6 +34,7 @@ export type ResolvedNutritionTemplate = ResolvedNutritionMacros & {
 
 export type HeuristicFoodTemplate = {
   canonicalName: string;
+  localizedName: string;
   slug: string;
   keywords: string[];
   safeVariantKeywords?: string[];

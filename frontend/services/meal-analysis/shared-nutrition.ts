@@ -104,6 +104,7 @@ export function getSharedCatalogCandidate(normalizedQuery: string) {
   return {
     slug: matched.template.slug,
     canonicalName: matched.template.canonicalName,
+    localizedName: matched.template.localizedName,
     source: 'AI_ESTIMATE' as SharedNutritionSource,
     defaultServingAmount: matched.template.defaultServingAmount ?? 1,
     defaultServingUnit: matched.template.defaultServingUnit ?? 'portion',

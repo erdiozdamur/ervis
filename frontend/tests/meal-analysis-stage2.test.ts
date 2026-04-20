@@ -528,3 +528,61 @@ test('stage 2 resolves known branded menu items from local shared catalog when l
   assert.equal(result.resolvedItems[0]?.resolutionMetadata.method, 'shared_catalog');
   assert.ok((result.resolvedItems[0]?.macros.calories ?? 0) > 0);
 });
+
+test('stage 2 replaces placeholder names with Turkish catalog names', async () => {
+  const resolver = new DefaultMealStage2NutritionResolver();
+  const db = createFakeDb({
+    foodEntries: [
+      {
+        id: 'food_rice',
+        slug: 'rice-pilaf',
+        canonicalName: 'Rice pilaf',
+        brandName: null,
+        source: 'OFFICIAL_DATASET',
+        defaultServingAmount: 1,
+        defaultServingUnit: 'plate',
+        calories: 205,
+        proteinGrams: 4,
+        carbGrams: 45,
+        fatGrams: 0,
+        fiberGrams: 1,
+      },
+    ],
+  });
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_tr_catalog',
+      userId: 'user_tr_catalog',
+      analysisRunId: 'run_tr_catalog',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Dinner draft',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_tr_catalog',
+          displayName: 'Fotoğraftaki tabak',
+          normalizedQuery: 'pilav',
+          quantityText: '1 porsiyon',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_tr_catalog'],
+          confidence: 0.45,
+          unresolved: true,
+          reasoning: 'Derived from weak image fallback.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems[0]?.displayName, 'Pilav');
+  assert.equal(result.resolvedItems[0]?.normalizedQuery, 'pilav');
+});

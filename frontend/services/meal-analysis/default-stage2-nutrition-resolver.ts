@@ -5,6 +5,7 @@ import { resolveNutritionWithOpenAi } from '@/services/meal-analysis/openai-stag
 import type { MealStage1Estimate, MealStage2ResolvedItem } from '@/types/meal-analysis';
 import {
   estimateHeuristicMacros,
+  localizeFoodDisplayName,
 } from '@/services/meal-analysis/heuristics';
 import {
   buildNutritionCacheKey,
@@ -286,6 +287,10 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
 
       if (sharedCatalogMatch) {
         const scaledMacros = scaleResolvedMacros(toResolvedMacros(sharedCatalogMatch.entry), item.quantityMultiplier);
+        const resolvedCatalogDisplayName =
+          looksLikePlaceholderDisplayName(item.displayName) || !item.displayName.trim()
+            ? localizeFoodDisplayName(sharedCatalogMatch.entry.canonicalName)
+            : item.displayName;
         const createdCacheEntry = await upsertSharedCache(db, {
           cacheKey,
           normalizedQueryText: normalization.canonicalQuery,
@@ -318,8 +323,8 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
 
         resolvedItems.push({
           id: item.id,
-          displayName: item.displayName,
-          normalizedQuery: item.normalizedQuery,
+          displayName: resolvedCatalogDisplayName,
+          normalizedQuery: resolveFoodNormalization(resolvedCatalogDisplayName).normalizedQuery,
           quantityText: item.quantityText,
           quantityMultiplier: item.quantityMultiplier,
           gramsEstimate: item.gramsEstimate ?? null,
@@ -345,6 +350,10 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
       if (heuristicCandidate && shouldPromoteSharedCatalogCandidate(normalization.normalizedQuery, heuristicCandidate)) {
         const heuristicCatalogEntry = await ensureHeuristicCatalogEntry(db, heuristicCandidate);
         const scaledMacros = scaleResolvedMacros(toResolvedMacros(heuristicCatalogEntry), item.quantityMultiplier);
+        const resolvedCatalogDisplayName =
+          looksLikePlaceholderDisplayName(item.displayName) || !item.displayName.trim()
+            ? heuristicCandidate.localizedName
+            : item.displayName;
         const createdCacheEntry = await upsertSharedCache(db, {
           cacheKey,
           normalizedQueryText: normalization.canonicalQuery,
@@ -376,8 +385,8 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
 
         resolvedItems.push({
           id: item.id,
-          displayName: item.displayName,
-          normalizedQuery: item.normalizedQuery,
+          displayName: resolvedCatalogDisplayName,
+          normalizedQuery: resolveFoodNormalization(resolvedCatalogDisplayName).normalizedQuery,
           quantityText: item.quantityText,
           quantityMultiplier: item.quantityMultiplier,
           gramsEstimate: item.gramsEstimate ?? null,
@@ -454,7 +463,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
 
       const resolvedDisplayName =
         freshResolution.canonicalName && (item.unresolved || looksLikePlaceholderDisplayName(item.displayName))
-          ? freshResolution.canonicalName
+          ? localizeFoodDisplayName(freshResolution.canonicalName)
           : item.displayName;
       const resolvedQuantityText = item.quantityText ?? freshResolution.servingSummary ?? null;
       const resolvedNormalizedQuery = resolveFoodNormalization(resolvedDisplayName).normalizedQuery;
