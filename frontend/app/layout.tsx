@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Fraunces, Manrope } from 'next/font/google';
 import './globals.css';
 import { APP_DESCRIPTION, APP_NAME } from '@/lib/config/app';
@@ -22,6 +22,11 @@ export const metadata: Metadata = {
   },
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
+  manifest: '/manifest.webmanifest',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0f766e',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
