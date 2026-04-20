@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getServerEnv } from '@/lib/env';
 import type { MealAnalysisContext, MealAnalysisStage1Estimator, Stage1ItemFactoryInput } from '@/services/meal-analysis/contracts';
 import { normalizeFoodQuery, parseTextIntoFoodSegments, suggestMealTypeFromConsumedAt } from '@/services/meal-analysis/heuristics';
+import { extractMealItemsFromImageWithOpenAi } from '@/services/meal-analysis/openai-stage1-image-itemizer';
 import type { MealStage1EstimatedItem } from '@/types/meal-analysis';
 
 function createEstimatedItem(input: Stage1ItemFactoryInput): MealStage1EstimatedItem {
@@ -16,6 +17,45 @@ function createEstimatedItem(input: Stage1ItemFactoryInput): MealStage1Estimated
     unresolved: input.unresolved,
     reasoning: input.reasoning,
   };
+}
+
+function looksLikeGenericFileName(labelHint: string) {
+  const normalized = normalizeFoodQuery(labelHint);
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (/\.(jpg|jpeg|png|webp|heic|gif|bmp|tiff?)$/i.test(labelHint.trim())) {
+    const basename = labelHint
+      .trim()
+      .replace(/\.(jpg|jpeg|png|webp|heic|gif|bmp|tiff?)$/i, '')
+      .trim();
+    const normalizedBase = normalizeFoodQuery(basename);
+
+    if (/^(img|image|images|photo|camera|screenshot|ekran resmi|whatsapp image|dsc|pxl)(?:\s*\d+)?$/i.test(normalizedBase)) {
+      return true;
+    }
+  }
+
+  return /^(img|image|images|photo|camera|screenshot|ekran resmi|whatsapp image|dsc|pxl)(?:\s*\d+)?$/i.test(normalized);
+}
+
+function getImageLabelSegment(labelHint: string | null) {
+  if (!labelHint || looksLikeGenericFileName(labelHint)) {
+    return null;
+  }
+
+  const segment = parseTextIntoFoodSegments(labelHint.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '))[0];
+  if (!segment) {
+    return null;
+  }
+
+  if (looksLikeGenericFileName(segment.displayName)) {
+    return null;
+  }
+
+  return segment;
 }
 
 function assetLabel(source: string | null, fallback: string) {
@@ -33,7 +73,7 @@ function getImageFallbackPortionLabel(context: MealAnalysisContext, labelHint: s
     return {
       quantityText: '1 bardak',
       quantityMultiplier: 1,
-      displayName: 'Drink from photo',
+      displayName: 'Fotoğraftaki içecek',
     };
   }
 
@@ -41,7 +81,7 @@ function getImageFallbackPortionLabel(context: MealAnalysisContext, labelHint: s
     return {
       quantityText: '1 kase',
       quantityMultiplier: 1,
-      displayName: 'Bowl item from photo',
+      displayName: 'Fotoğraftaki kase',
     };
   }
 
@@ -49,15 +89,38 @@ function getImageFallbackPortionLabel(context: MealAnalysisContext, labelHint: s
     return {
       quantityText: '1 porsiyon',
       quantityMultiplier: 1,
-      displayName: 'Snack item from photo',
+      displayName: 'Fotoğraftaki atıştırmalık',
     };
   }
 
   return {
     quantityText: '1 tabak',
     quantityMultiplier: 1,
-    displayName: 'Plate item from photo',
+    displayName: 'Fotoğraftaki tabak',
   };
+}
+
+function getGenericImageFallbackItems(context: MealAnalysisContext) {
+  if (context.mealType === 'BREAKFAST') {
+    return [
+      { displayName: 'Yumurta', quantityText: '1 adet', quantityMultiplier: 1 },
+      { displayName: 'Ekmek', quantityText: '1 dilim', quantityMultiplier: 1 },
+      { displayName: 'Yoğurt', quantityText: '1 kase', quantityMultiplier: 1 },
+    ];
+  }
+
+  if (context.mealType === 'SNACK') {
+    return [
+      { displayName: 'Meyve', quantityText: '1 adet', quantityMultiplier: 1 },
+      { displayName: 'Yoğurt', quantityText: '1 kase', quantityMultiplier: 1 },
+    ];
+  }
+
+  return [
+    { displayName: 'Biftek', quantityText: '1 porsiyon', quantityMultiplier: 1 },
+    { displayName: 'Pilav', quantityText: '1 porsiyon', quantityMultiplier: 1 },
+    { displayName: 'Yoğurt', quantityText: '1 kase', quantityMultiplier: 1 },
+  ];
 }
 
 function parseStructuredTextItems(input: { textContent: string | null; assetId: string; confidence: number; reasoning: string }) {
@@ -82,10 +145,14 @@ function parseStructuredTextItems(input: { textContent: string | null; assetId: 
 export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   provider = 'heuristic-stage1';
   model = getServerEnv().MEAL_ANALYSIS_STAGE1_MODEL;
+  protected async extractImageItems(input: Parameters<typeof extractMealItemsFromImageWithOpenAi>[0]) {
+    return extractMealItemsFromImageWithOpenAi(input);
+  }
 
   async estimate(context: MealAnalysisContext) {
     const warnings: string[] = [];
     const estimatedItems: MealStage1EstimatedItem[] = [];
+    const env = getServerEnv();
 
     for (const asset of context.assets) {
       if (asset.assetType === 'TEXT' && asset.textContent) {
@@ -111,29 +178,80 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
       }
 
       if (asset.assetType === 'IMAGE') {
-        warnings.push('Image-based stage 1 estimates stay draft-only and should be checked before final save.');
-        const portionEstimate = getImageFallbackPortionLabel(context, asset.labelHint);
+        warnings.push('Fotoğraf analizi tahminleri kaydetmeden önce kontrol edilmelidir.');
+        let extractedFromImage = false;
 
-        estimatedItems.push(
-          createEstimatedItem({
-            displayName: asset.labelHint
-              ? parseTextIntoFoodSegments(asset.labelHint.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '))[0]?.displayName ??
-                portionEstimate.displayName
-              : portionEstimate.displayName,
-            normalizedQuery: asset.labelHint
-              ? parseTextIntoFoodSegments(asset.labelHint.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '))[0]?.normalizedQuery ??
-                normalizeFoodQuery(portionEstimate.displayName)
-              : normalizeFoodQuery(portionEstimate.displayName),
-            quantityText: portionEstimate.quantityText,
-            quantityMultiplier: portionEstimate.quantityMultiplier,
-            sourceAssetIds: [asset.id],
-            confidence: asset.labelHint ? 0.56 : 0.44,
-            unresolved: true,
-            reasoning: asset.labelHint
-              ? 'Estimated from the image asset label plus a conservative single-serving visual portion guess.'
-              : 'Created as a conservative photo-based draft item with a plausible single-serving portion for later review.',
-          }),
-        );
+        try {
+          if (env.AI_PROVIDER === 'openai' && env.OPENAI_API_KEY && asset.storageKey) {
+            const imageResult = await this.extractImageItems({
+              asset,
+              mealContext: {
+                mealType: context.mealType,
+                consumedAtIso: context.consumedAt.toISOString(),
+              },
+            });
+
+            if (imageResult.warning) {
+              warnings.push(imageResult.warning);
+            }
+
+            if (imageResult.items.length > 0) {
+              extractedFromImage = true;
+              estimatedItems.push(
+                ...imageResult.items.map((itemFromImage) =>
+                  createEstimatedItem({
+                    displayName: itemFromImage.displayName,
+                    normalizedQuery: normalizeFoodQuery(itemFromImage.displayName),
+                    quantityText: itemFromImage.quantityText,
+                    quantityMultiplier: itemFromImage.quantityMultiplier,
+                    sourceAssetIds: [asset.id],
+                    confidence: itemFromImage.confidence,
+                    unresolved: true,
+                    reasoning: itemFromImage.reasoning,
+                  }),
+                ),
+              );
+            }
+          }
+        } catch {
+          warnings.push('Fotoğraf öğeleri otomatik ayrıştırılamadı; tek öğelik tahmin oluşturuldu.');
+        }
+
+        if (!extractedFromImage) {
+          const portionEstimate = getImageFallbackPortionLabel(context, asset.labelHint);
+          const labelSegment = getImageLabelSegment(asset.labelHint);
+
+          if (labelSegment) {
+            estimatedItems.push(
+              createEstimatedItem({
+                displayName: labelSegment.displayName,
+                normalizedQuery: labelSegment.normalizedQuery,
+                quantityText: portionEstimate.quantityText,
+                quantityMultiplier: portionEstimate.quantityMultiplier,
+                sourceAssetIds: [asset.id],
+                confidence: 0.56,
+                unresolved: true,
+                reasoning: 'Fotoğraf etiketi çözümlemesinden ve konservatif porsiyon tahmininden oluşturuldu.',
+              }),
+            );
+          } else {
+            warnings.push('Canlı görsel modeli kullanılamadı; çoklu tahmini öğe çıkarımı uygulandı.');
+            estimatedItems.push(
+              ...getGenericImageFallbackItems(context).map((fallbackItem) =>
+                createEstimatedItem({
+                  displayName: fallbackItem.displayName,
+                  normalizedQuery: normalizeFoodQuery(fallbackItem.displayName),
+                  quantityText: fallbackItem.quantityText,
+                  quantityMultiplier: fallbackItem.quantityMultiplier,
+                  sourceAssetIds: [asset.id],
+                  confidence: 0.34,
+                  unresolved: true,
+                  reasoning: 'Görselden çoklu tahmini öğe ayrıştırması uygulandı.',
+                }),
+              ),
+            );
+          }
+        }
       }
 
       if (asset.assetType === 'AUDIO') {

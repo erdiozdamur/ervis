@@ -9,6 +9,7 @@ import {
   getAppDayKey,
 } from '@/lib/date/istanbul';
 import type { FinalMealUpdateInput } from '@/lib/meals/final-meal-validation';
+import { estimateGramsFromPortion } from '@/lib/meals/portion-grams';
 import type { MealEditorItem, MealEditorSnapshot } from '@/types/meals';
 
 type UpdateOwnedFinalMealResult =
@@ -117,11 +118,13 @@ export async function getOwnedMealEditorSnapshot(userId: string, mealId: string)
   }
 
   const items: MealEditorItem[] = meal.items.map((item) => ({
-    id: item.id,
-    displayName: item.displayName,
     quantityAmount: item.quantityAmount ? item.quantityAmount.toNumber() : null,
     quantityUnit: item.quantityUnit,
-    gramsEstimate: item.gramsEstimate ? item.gramsEstimate.toNumber() : null,
+    gramsEstimate:
+      item.gramsEstimate?.toNumber() ??
+      estimateGramsFromPortion(item.quantityAmount ? item.quantityAmount.toNumber() : null, item.quantityUnit, item.displayName),
+    id: item.id,
+    displayName: item.displayName,
     calories: decimalToNumber(item.calories),
     proteinGrams: decimalToNumber(item.proteinGrams),
     carbGrams: decimalToNumber(item.carbGrams),

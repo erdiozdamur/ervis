@@ -59,3 +59,35 @@ test('stage 1 creates a conservative photo draft item with a portion estimate', 
   assert.equal(result.estimatedItems[0]?.quantityText, '1 kase');
   assert.equal(result.estimatedItems[0]?.unresolved, true);
 });
+
+test('stage 1 does not use generic image filenames as food names', async () => {
+  const estimator = new DefaultMealStage1Estimator();
+
+  const result = await estimator.estimate({
+    mealId: 'meal_3',
+    userId: 'user_3',
+    analysisRunId: 'run_3',
+    consumedAt: new Date(Date.UTC(2026, 3, 17, 15, 0)),
+    mealType: 'DINNER',
+    assets: [
+      {
+        id: 'asset_image',
+        assetType: 'IMAGE',
+        source: 'upload',
+        textContent: null,
+        mimeType: 'image/jpeg',
+        storageKey: null,
+        labelHint: 'images (1).jpeg',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  });
+
+  assert.equal(result.estimatedItems.length, 3);
+  assert.deepEqual(
+    result.estimatedItems.map((item) => item.displayName),
+    ['Biftek', 'Pilav', 'Yoğurt'],
+  );
+  assert.equal(result.estimatedItems.every((item) => item.unresolved), true);
+  assert.equal(result.warnings.some((warning) => warning.includes('çoklu tahmini öğe çıkarımı')), true);
+});

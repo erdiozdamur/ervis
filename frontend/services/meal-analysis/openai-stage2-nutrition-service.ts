@@ -1,5 +1,6 @@
 import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
+import { extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
 import type { MealAnalysisAssetInput, ResolvedNutritionMacros } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -104,41 +105,8 @@ function createStructuredOutputSchema() {
   } as const;
 }
 
-function getResponseText(payload: unknown) {
-  const data = payload && typeof payload === 'object' ? payload : null;
-  const output = data && 'output' in data && Array.isArray(data.output) ? data.output : [];
-  const textParts: string[] = [];
-
-  for (const entry of output) {
-    if (!entry || typeof entry !== 'object' || !('content' in entry) || !Array.isArray(entry.content)) {
-      continue;
-    }
-
-    for (const contentPart of entry.content) {
-      if (
-        contentPart &&
-        typeof contentPart === 'object' &&
-        'type' in contentPart &&
-        contentPart.type === 'output_text' &&
-        'text' in contentPart &&
-        typeof contentPart.text === 'string'
-      ) {
-        textParts.push(contentPart.text);
-      }
-    }
-  }
-
-  return textParts.join('\n').trim();
-}
-
-function parseStructuredNutritionPayload(payload: unknown): OpenAiResolvedNutrition {
-  const responseText = getResponseText(payload);
-
-  if (!responseText) {
-    throw new Error('The nutrition model response did not include structured text output.');
-  }
-
-  const data = JSON.parse(responseText) as Record<string, unknown>;
+export function parseStructuredNutritionPayload(payload: unknown): OpenAiResolvedNutrition {
+  const data = extractStructuredOutputData(payload);
   const macros = data.macros && typeof data.macros === 'object' ? (data.macros as Record<string, unknown>) : null;
 
   if (!macros) {

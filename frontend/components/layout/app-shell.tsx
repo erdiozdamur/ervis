@@ -15,10 +15,10 @@ type AppShellProps = {
 export function AppShell({ children, user, needsProfileCompletion = false }: AppShellProps) {
   return (
     <MobileAppShell footer={<MobileBottomNav needsProfileCompletion={needsProfileCompletion} />} className="pb-36">
-      <div className="sticky safe-top top-0 z-20 -mx-1 mb-5">
+      <div className="sticky safe-top top-0 z-20 -mx-1 mb-1 sm:mb-5">
         <AppTopBar user={user} />
       </div>
-      <div className="animate-fade-up space-y-6">{children}</div>
+      <div className="animate-fade-up space-y-4 sm:space-y-6">{children}</div>
     </MobileAppShell>
   );
 }

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DefaultMealStage2NutritionResolver } from '@/services/meal-analysis/default-stage2-nutrition-resolver';
-import { MealAnalysisError } from '@/services/meal-analysis/errors';
 import { buildNutritionCacheKey, resolveFoodNormalization } from '@/services/meal-analysis/shared-nutrition';
 
 function createFakeDb({
@@ -247,7 +246,80 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
   assert.equal(db._foods.length, 0);
 });
 
-test('stage 2 fails fast when live nutrition resolution is unavailable', async () => {
+test('stage 2 replaces placeholder display names with provider canonical names for unresolved photo items', async () => {
+  class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
+    protected override async resolveFreshNutritionWithProvider() {
+      return {
+        canonicalName: 'Izgara köfte',
+        servingSummary: '3 adet',
+        gramsEstimate: 180,
+        confidence: 0.84,
+        reasoning: 'Resolved from model output.',
+        macros: {
+          calories: 420,
+          proteinGrams: 32,
+          carbGrams: 10,
+          fatGrams: 28,
+          fiberGrams: 1,
+        },
+      };
+    }
+  }
+
+  const resolver = new TestStage2Resolver();
+  const db = createFakeDb({});
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_5',
+      userId: 'user_5',
+      analysisRunId: 'run_5',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [
+        {
+          id: 'asset_5',
+          assetType: 'IMAGE',
+          source: 'upload',
+          textContent: null,
+          mimeType: 'image/jpeg',
+          storageKey: 'uploads/test.jpg',
+          labelHint: 'images (1).jpeg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Dinner draft',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_5',
+          displayName: 'images (1)',
+          normalizedQuery: 'images 1',
+          quantityText: null,
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_5'],
+          confidence: 0.4,
+          unresolved: true,
+          reasoning: 'Derived from weak image fallback.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems.length, 1);
+  assert.equal(result.resolvedItems[0]?.displayName, 'Izgara köfte');
+  assert.equal(result.resolvedItems[0]?.quantityText, '3 adet');
+  assert.equal(result.resolvedItems[0]?.normalizedQuery, 'ızgara köfte');
+});
+
+test('stage 2 falls back to heuristic values when live nutrition resolution is unavailable', async () => {
   class FailingStage2Resolver extends DefaultMealStage2NutritionResolver {
     protected override resolveFreshNutritionWithProvider(
       input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0],
@@ -260,45 +332,95 @@ test('stage 2 fails fast when live nutrition resolution is unavailable', async (
   const resolver = new FailingStage2Resolver();
   const db = createFakeDb({});
 
-  await assert.rejects(
-    () =>
-      resolver.resolve(
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_4',
+      userId: 'user_4',
+      analysisRunId: 'run_4',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Dinner draft',
+      warnings: [],
+      estimatedItems: [
         {
-          mealId: 'meal_4',
-          userId: 'user_4',
-          analysisRunId: 'run_4',
-          consumedAt: new Date(),
-          mealType: 'DINNER',
-          assets: [],
+          id: 'item_4',
+          displayName: 'Unknown meal',
+          normalizedQuery: 'unknown meal',
+          quantityText: '1 porsiyon',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_4'],
+          confidence: 0.5,
+          unresolved: true,
+          reasoning: 'Derived from weak input.',
         },
-        {
-          stage: 'stage_1_estimation',
-          provider: 'heuristic-stage1',
-          model: 'test-model',
-          mealTypeSuggestion: 'DINNER',
-          mealTitleSuggestion: 'Dinner draft',
-          warnings: [],
-          estimatedItems: [
-            {
-              id: 'item_4',
-              displayName: 'Unknown meal',
-              normalizedQuery: 'unknown meal',
-              quantityText: '1 porsiyon',
-              quantityMultiplier: 1,
-              sourceAssetIds: ['asset_4'],
-              confidence: 0.5,
-              unresolved: true,
-              reasoning: 'Derived from weak input.',
-            },
-          ],
-        },
-        db as never,
-      ),
-    (error: unknown) =>
-      error instanceof MealAnalysisError &&
-      error.code === 'analysis_stage2_live_resolution_failed' &&
-      error.stage === 'stage_2_nutrition_resolution',
+      ],
+    },
+    db as never,
   );
+
+  assert.equal(result.resolvedItems.length, 1);
+  assert.equal(result.resolvedItems[0]?.nutritionSource, 'FRESH_ANALYSIS');
+  assert.equal(result.resolvedItems[0]?.resolutionMetadata.method, 'fresh_analysis');
+  assert.equal(result.resolvedItems[0]?.macros.calories, 240);
+  assert.equal(result.warnings.some((warning) => warning.includes('canlı çözümleme başarısız')), true);
+});
+
+test('stage 2 falls back to heuristic macros when live resolver returns authentication/configuration errors', async () => {
+  class AuthFailingStage2Resolver extends DefaultMealStage2NutritionResolver {
+    protected override resolveFreshNutritionWithProvider(
+      input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0],
+    ): Promise<never> {
+      void input;
+      return Promise.reject(new Error('Incorrect API key provided.'));
+    }
+  }
+
+  const resolver = new AuthFailingStage2Resolver();
+  const db = createFakeDb({});
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_auth_fail',
+      userId: 'user_auth_fail',
+      analysisRunId: 'run_auth_fail',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Dinner draft',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_auth_fail',
+          displayName: 'Qzzx unknown',
+          normalizedQuery: 'qzzx unknown',
+          quantityText: '1 tabak',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_auth_fail'],
+          confidence: 0.4,
+          unresolved: true,
+          reasoning: 'Derived from weak image fallback.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems.length, 1);
+  assert.equal(result.resolvedItems[0]?.macros.calories, 240);
+  assert.equal(result.warnings.some((warning) => warning.includes('OpenAI API anahtarı geçersiz')), true);
 });
 
 test('resolveFoodNormalization safely canonicalizes strong food variants', () => {

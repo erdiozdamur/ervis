@@ -31,6 +31,7 @@ test('getMealDaySummary calculates daily totals and keeps signed remaining value
       notes: null,
       items: [
         {
+          displayName: 'Kuru fasulye',
           calories: new Prisma.Decimal(650),
           proteinGrams: new Prisma.Decimal(60),
           carbGrams: new Prisma.Decimal(50),
@@ -47,6 +48,7 @@ test('getMealDaySummary calculates daily totals and keeps signed remaining value
       notes: null,
       items: [
         {
+          displayName: 'Pilav',
           calories: new Prisma.Decimal(1450),
           proteinGrams: new Prisma.Decimal(100),
           carbGrams: new Prisma.Decimal(160),
@@ -70,6 +72,10 @@ test('getMealDaySummary calculates daily totals and keeps signed remaining value
     assert.equal(summary.mealCount, 2);
     assert.equal(summary.confirmedMealCount, 1);
     assert.equal(summary.hasDraftMeals, true);
+    assert.equal(summary.meals[0]?.title, '1. öğün');
+    assert.equal(summary.meals[1]?.title, '2. öğün');
+    assert.deepEqual(summary.meals[0]?.previewItemNames, ['Kuru fasulye']);
+    assert.deepEqual(summary.meals[1]?.previewItemNames, ['Pilav']);
   } finally {
     profileDelegate.findUnique = originalFindUnique;
     mealDelegate.findMany = originalFindMany;

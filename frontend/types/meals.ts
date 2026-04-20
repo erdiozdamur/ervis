@@ -3,6 +3,7 @@ import type { MealStatus, MealType } from '@prisma/client';
 export type MealCard = {
   id: string;
   title: string;
+  previewItemNames: string[];
   mealType: MealType;
   status: MealStatus;
   consumedAtLabel: string;

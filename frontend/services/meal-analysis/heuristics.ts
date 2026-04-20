@@ -3,8 +3,9 @@ import type { HeuristicFoodTemplate, ParsedTextFoodSegment, ResolvedNutritionMac
 
 const punctuationPattern = /[^\p{L}\p{N}\s]/gu;
 const quantityUnitPattern =
-  /^(tabak|kase|bardak|porsiyon|porsiyonluk|adet|dilim|fincan|kupa|avuc|avuç|parca|parça|sise|şişe|kutu|kasik|kaşık)$/i;
+  /^(tabak|kase|bardak|porsiyon|porsiyonluk|adet|dilim|fincan|kupa|avuc|avuç|parca|parça|sise|şişe|kutu|kasik|kaşık|g|gr|gram|kg|ml|l|lt|litre|menu|menü)$/i;
 const numericAmountPattern = /^\d+(?:[.,]\d+)?$/;
+const compactAmountWithUnitPattern = /^(\d+(?:[.,]\d+)?)(g|gr|gram|kg|ml|l|lt)$/i;
 const turkishNumberMap = new Map<string, number>([
   ['tek', 1],
   ['bir', 1],
@@ -201,6 +202,27 @@ export function findHeuristicFoodTemplateMatch(normalizedQuery: string) {
   return matched ?? null;
 }
 
+function normalizeQuantityMultiplier(amount: number, unit: string | null) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 1;
+  }
+
+  const normalizedUnit = unit?.trim().toLocaleLowerCase('tr-TR') ?? null;
+  if (!normalizedUnit) {
+    return amount;
+  }
+
+  if (['g', 'gr', 'gram', 'ml'].includes(normalizedUnit)) {
+    return amount / 100;
+  }
+
+  if (['kg', 'l', 'lt', 'litre'].includes(normalizedUnit)) {
+    return amount * 10;
+  }
+
+  return amount;
+}
+
 function parseLeadingAmountToken(tokens: string[]) {
   const first = tokens[0];
   const second = tokens[1];
@@ -289,6 +311,26 @@ function extractQuantityFromSegment(segment: string) {
   }
 
   const tokens = compact.split(' ');
+  const compactMatch = compactAmountWithUnitPattern.exec(normalizeFoodQuery(tokens[0] ?? ''));
+  if (compactMatch) {
+    const remainder = tokens.slice(1).join(' ').trim();
+    if (!remainder) {
+      return {
+        quantityText: null,
+        quantityMultiplier: 1,
+        remainder: compact,
+      };
+    }
+
+    const amount = Number(compactMatch[1].replace(',', '.'));
+    const unit = compactMatch[2].toLocaleLowerCase('tr-TR');
+    return {
+      quantityText: `${compactMatch[1]} ${unit}`,
+      quantityMultiplier: normalizeQuantityMultiplier(amount, unit),
+      remainder,
+    };
+  }
+
   const parsedAmount = parseLeadingAmountToken(tokens);
 
   if (!parsedAmount) {
@@ -313,9 +355,13 @@ function extractQuantityFromSegment(segment: string) {
     };
   }
 
+  const normalizedUnit = hasUnit && unitToken ? normalizeFoodQuery(unitToken) : null;
   return {
     quantityText,
-    quantityMultiplier: Number.isFinite(parsedAmount.amount) && parsedAmount.amount > 0 ? parsedAmount.amount : 1,
+    quantityMultiplier:
+      Number.isFinite(parsedAmount.amount) && parsedAmount.amount > 0
+        ? normalizeQuantityMultiplier(parsedAmount.amount, normalizedUnit)
+        : 1,
     remainder,
   };
 }

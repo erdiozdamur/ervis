@@ -47,6 +47,7 @@ function toMealCard(
     consumedAt: Date;
     notes: string | null;
     items: Array<{
+      displayName?: string | null;
       calories: Prisma.Decimal | null;
       proteinGrams: Prisma.Decimal | null;
       carbGrams: Prisma.Decimal | null;
@@ -59,6 +60,7 @@ function toMealCard(
   return {
     id: meal.id,
     title: meal.title || formatMealTypeLabel(meal.mealType),
+    previewItemNames: meal.items.map((item) => item.displayName?.trim() ?? '').filter(Boolean),
     mealType: meal.mealType,
     status: meal.status,
     consumedAtLabel: formatTimeInAppTimeZone(meal.consumedAt),
@@ -102,6 +104,7 @@ export async function getMealDaySummary(userId: string, dayKey: string): Promise
             sortOrder: 'asc',
           },
           select: {
+            displayName: true,
             calories: true,
             proteinGrams: true,
             carbGrams: true,
@@ -115,7 +118,11 @@ export async function getMealDaySummary(userId: string, dayKey: string): Promise
     }),
   ]);
 
-  const mealCards = meals.map(toMealCard);
+  const mealsWithItems = meals.filter((meal) => meal.items.length > 0);
+  const mealCards = mealsWithItems.map(toMealCard).map((meal, index) => ({
+    ...meal,
+    title: `${index + 1}. öğün`,
+  }));
   const consumed = mealCards.reduce<MealTotals>(
     (totals, meal) => ({
       calories: totals.calories + meal.calories,

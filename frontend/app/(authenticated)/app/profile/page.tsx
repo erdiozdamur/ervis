@@ -14,9 +14,7 @@ export default async function ProfilePage() {
 
   return (
     <Stack gap="xl">
-      <section aria-labelledby="targets-heading">
-        <ScreenHeader eyebrow="Hedefler" title="Hedefler" />
-
+      <section>
         <ProfileTargetForm initialProfile={profile} />
       </section>
 
@@ -27,14 +25,13 @@ export default async function ProfilePage() {
       />
 
       <section aria-labelledby="profile-title">
-        <ScreenHeader eyebrow="Profil" title="Profil" />
+        <ScreenHeader eyebrow="Hesabın" title="Profil" />
 
         <Card tone="hero">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Profil</p>
               <h1 id="profile-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                {user.name || 'Profilin'}
+                {user.name || 'Kullanıcı'}
               </h1>
               <p className="mt-2 text-sm leading-6 text-slate-600">{user.email}</p>
             </div>

@@ -14,6 +14,23 @@ test('parseDraftPortion handles Turkish portion text', () => {
   assert.equal(parsed.quantityMultiplier, 0.5);
 });
 
+test('parseDraftPortion keeps gram unit and avoids portion inflation on large naked values', () => {
+  const parsedWithGram = parseDraftPortion('400 gram');
+  assert.equal(parsedWithGram.quantityAmount, 400);
+  assert.equal(parsedWithGram.quantityUnit, 'gram');
+  assert.equal(parsedWithGram.quantityMultiplier, 4);
+
+  const parsedCompact = parseDraftPortion('250g');
+  assert.equal(parsedCompact.quantityAmount, 250);
+  assert.equal(parsedCompact.quantityUnit, 'g');
+  assert.equal(parsedCompact.quantityMultiplier, 2.5);
+
+  const parsedLargeWithoutUnit = parseDraftPortion('400');
+  assert.equal(parsedLargeWithoutUnit.quantityAmount, 400);
+  assert.equal(parsedLargeWithoutUnit.quantityUnit, 'gram');
+  assert.equal(parsedLargeWithoutUnit.quantityMultiplier, 4);
+});
+
 test('buildConfirmedMealItemsFromDraft maps editable draft items into final meal items', () => {
   const draftResult: MealDraftAnalysisResult = {
     contractVersion: 'meal-draft-result-v1',
@@ -74,6 +91,62 @@ test('buildConfirmedMealItemsFromDraft maps editable draft items into final meal
   assert.equal(rows[0]?.quantityAmount, 1);
   assert.equal(rows[0]?.quantityUnit, 'porsiyon');
   assert.equal(rows[0]?.nutritionCacheEntryId, null);
+});
+
+test('buildConfirmedMealItemsFromDraft estimates grams when analysis grams are missing', () => {
+  const draftResult: MealDraftAnalysisResult = {
+    contractVersion: 'meal-draft-result-v1',
+    mealId: 'meal_2',
+    analysisRunId: 'run_2',
+    editable: true,
+    mealTypeSuggestion: 'LUNCH',
+    titleSuggestion: 'Lunch',
+    warnings: [],
+    totals: {
+      calories: 320,
+      proteinGrams: 10,
+      carbGrams: 40,
+      fatGrams: 12,
+      fiberGrams: 3,
+    },
+    stageTrace: {
+      stage1: { provider: 'heuristic', model: 'test', warningCount: 0, itemCount: 1 },
+      stage2: { provider: 'heuristic', model: 'test', warningCount: 0, itemCount: 1, unresolvedItemCount: 0 },
+    },
+    generatedAt: new Date().toISOString(),
+    items: [
+      {
+        id: 'item_2',
+        displayName: 'Pilav',
+        normalizedQuery: 'pilav',
+        quantityText: '2 porsiyon',
+        quantityMultiplier: 2,
+        gramsEstimate: null,
+        sourceAssetIds: ['asset_2'],
+        confidence: 0.8,
+        unresolved: false,
+        reasoning: 'test',
+        nutritionSource: 'USER_REVIEW',
+        nutritionCacheEntryId: null,
+        normalizedFoodEntryId: null,
+        resolutionMetadata: {
+          method: 'user_review',
+          matchConfidence: 1,
+          matchedKeyword: null,
+        },
+        macros: {
+          calories: 320,
+          proteinGrams: 10,
+          carbGrams: 40,
+          fatGrams: 12,
+          fiberGrams: 3,
+        },
+      },
+    ],
+  };
+
+  const rows = buildConfirmedMealItemsFromDraft('meal_2', draftResult);
+  assert.equal(rows[0]?.gramsEstimate, 360);
 });
 
 test('confirmOwnedMealDraft is idempotent when the meal is already confirmed', async () => {

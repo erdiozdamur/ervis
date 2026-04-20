@@ -23,6 +23,18 @@ test('parseTextIntoFoodSegments understands Turkish portion phrases', () => {
   assert.equal(segments[2]?.quantityMultiplier, 0.5);
 });
 
+test('parseTextIntoFoodSegments keeps gram units correctly', () => {
+  const segments = parseTextIntoFoodSegments('400 gram biftek, 250g pilav');
+
+  assert.equal(segments.length, 2);
+  assert.equal(segments[0]?.displayName, 'Biftek');
+  assert.equal(segments[0]?.quantityText, '400 gram');
+  assert.equal(segments[0]?.quantityMultiplier, 4);
+  assert.equal(segments[1]?.displayName, 'Pilav');
+  assert.equal(segments[1]?.quantityText, '250 g');
+  assert.equal(segments[1]?.quantityMultiplier, 2.5);
+});
+
 test('estimateHeuristicMacros returns known nutrition estimates for common foods', () => {
   const result = estimateHeuristicMacros('egg', 2);
 

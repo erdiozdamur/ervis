@@ -71,20 +71,45 @@ export function MealLogWidget() {
   const blossoms: Array<{
     method: MealInputMethod;
     label: string;
+    description: string;
     icon: 'camera' | 'photo' | 'text' | 'microphone';
     positionClass: string;
   }> = [
-    { method: 'camera', label: 'Kamera', icon: 'camera', positionClass: '-left-1 -top-16' },
-    { method: 'image', label: 'Fotoğraf yükle', icon: 'photo', positionClass: '-left-14 -top-12' },
-    { method: 'text', label: 'Yazı', icon: 'text', positionClass: '-left-16 -top-1' },
-    { method: 'audio', label: 'Ses', icon: 'microphone', positionClass: '-left-12 top-10' },
+    {
+      method: 'camera',
+      label: 'Kamera',
+      description: 'Canlı çekim',
+      icon: 'camera',
+      positionClass: 'right-0 bottom-[4.5rem]',
+    },
+    {
+      method: 'image',
+      label: 'Fotoğraf',
+      description: 'Galeriden seç',
+      icon: 'photo',
+      positionClass: 'right-1 bottom-[9.2rem]',
+    },
+    {
+      method: 'text',
+      label: 'Yazı',
+      description: 'Hızlı metin girişi',
+      icon: 'text',
+      positionClass: 'right-2 bottom-[13.9rem]',
+    },
+    {
+      method: 'audio',
+      label: 'Sesli',
+      description: 'Konuşarak ekle',
+      icon: 'microphone',
+      positionClass: 'right-3 bottom-[18.6rem]',
+    },
   ];
 
   const methodTitle: Record<MealInputMethod, string> = {
     camera: 'Kamera',
-    image: 'Fotoğraf yükle',
+    image: 'Fotoğraf',
     text: 'Yazı',
-    audio: 'Ses',
+    audio: 'Sesli',
   };
 
   if (!isPortalReady) {
@@ -93,6 +118,15 @@ export function MealLogWidget() {
 
   return createPortal(
     <>
+      {expanded && activeMethod === null ? (
+        <button
+          type="button"
+          aria-label="Öğün ekleme menüsünü kapat"
+          onClick={() => setExpanded(false)}
+          className="fixed inset-0 z-30 bg-slate-950/12 backdrop-blur-[1px]"
+        />
+      ) : null}
+
       <div
         className="pointer-events-none fixed right-4 z-40 sm:right-6"
         style={{
@@ -109,14 +143,20 @@ export function MealLogWidget() {
                 setActiveMethod(item.method);
               }}
               className={cn(
-                'absolute flex h-12 w-12 items-center justify-center rounded-full border border-white/90 bg-white text-slate-900 shadow-floating transition-all duration-200',
+                'absolute flex w-44 items-center gap-2.5 rounded-2xl border border-white/85 bg-white/98 px-3 py-2 text-left text-slate-900 shadow-floating backdrop-blur-xl transition-all duration-200',
                 item.positionClass,
-                expanded ? 'pointer-events-auto scale-100 opacity-100' : 'pointer-events-none scale-75 opacity-0',
+                expanded ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none translate-y-2 scale-95 opacity-0',
               )}
               aria-label={item.label}
               title={item.label}
             >
-              <Icon name={item.icon} className="h-5 w-5" />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-800">
+                <Icon name={item.icon} className="h-4.5 w-4.5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold leading-tight">{item.label}</span>
+                <span className="mt-0.5 block text-[11px] leading-tight text-slate-500">{item.description}</span>
+              </span>
             </button>
           ))}
 

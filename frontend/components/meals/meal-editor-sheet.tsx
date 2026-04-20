@@ -1,21 +1,23 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import type { UIEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button, buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@/components/ui/icon';
-import { mealTypeOptions } from '@/lib/meals/constants';
 import { finalMealUpdateSchema, flattenFinalMealFieldErrors } from '@/lib/meals/final-meal-validation';
-import { cn } from '@/lib/utils/cn';
 import type { MealEditorSnapshot, MealSaveFieldErrors, MealSaveResult } from '@/types/meals';
+import { cn } from '@/lib/utils/cn';
 
 type MealEditorSheetProps = {
   mealId: string;
   isDraft: boolean;
+  children?: ReactNode;
+  triggerClassName?: string;
 };
 
 type EditableItem = {
@@ -29,6 +31,16 @@ type EditableItem = {
   carbGrams: string;
   fatGrams: string;
   fiberGrams: string;
+};
+
+type BaseItemSnapshot = {
+  quantityAmount: number | null;
+  gramsEstimate: number | null;
+  calories: number;
+  proteinGrams: number;
+  carbGrams: number;
+  fatGrams: number;
+  fiberGrams: number;
 };
 
 type SnapshotResponse =
@@ -56,41 +68,145 @@ function toEditableItems(meal: MealEditorSnapshot): EditableItem[] {
   }));
 }
 
-function makeItemId() {
-  return `inline-meal-item-${Math.random().toString(36).slice(2, 10)}`;
+function toBaseItems(meal: MealEditorSnapshot): Record<string, BaseItemSnapshot> {
+  return Object.fromEntries(
+    meal.items.map((item) => [
+      item.id,
+      {
+        quantityAmount: item.quantityAmount,
+        gramsEstimate: item.gramsEstimate,
+        calories: item.calories,
+        proteinGrams: item.proteinGrams,
+        carbGrams: item.carbGrams,
+        fatGrams: item.fatGrams,
+        fiberGrams: item.fiberGrams,
+      },
+    ]),
+  );
 }
 
-export function MealEditorSheet({ mealId, isDraft }: MealEditorSheetProps) {
+function roundOne(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function parsePositive(value: string) {
+  const parsed = Number(value.replace(',', '.'));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function parseNonNegative(value: string) {
+  const parsed = Number(value.replace(',', '.'));
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function getRequiredFieldErrors(items: EditableItem[]) {
+  const errors: MealSaveFieldErrors = {};
+
+  if (items.length === 0) {
+    errors.items = 'En az bir besin olmalı.';
+    return errors;
+  }
+
+  items.forEach((item, index) => {
+    if (item.displayName.trim().length === 0) {
+      errors[`items.${index}.displayName`] = 'Besin adı zorunlu.';
+    }
+
+    if (!parsePositive(item.quantityAmount)) {
+      errors[`items.${index}.quantityAmount`] = 'Miktar 0\'dan büyük olmalı.';
+    }
+
+    if (item.quantityUnit.trim().length === 0) {
+      errors[`items.${index}.quantityUnit`] = 'Birim zorunlu.';
+    }
+
+    if (parseNonNegative(item.calories) == null) {
+      errors[`items.${index}.calories`] = 'Kalori zorunlu.';
+    }
+
+    if (parseNonNegative(item.proteinGrams) == null) {
+      errors[`items.${index}.proteinGrams`] = 'Protein zorunlu.';
+    }
+
+    if (parseNonNegative(item.carbGrams) == null) {
+      errors[`items.${index}.carbGrams`] = 'Karbonhidrat zorunlu.';
+    }
+
+    if (parseNonNegative(item.fatGrams) == null) {
+      errors[`items.${index}.fatGrams`] = 'Yağ zorunlu.';
+    }
+
+    if (parseNonNegative(item.fiberGrams) == null) {
+      errors[`items.${index}.fiberGrams`] = 'Lif zorunlu.';
+    }
+  });
+
+  return errors;
+}
+
+export function MealEditorSheet({ mealId, isDraft, children, triggerClassName }: MealEditorSheetProps) {
   const router = useRouter();
+  const [isPortalReady, setIsPortalReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<MealEditorSnapshot | null>(null);
-  const [mealTitle, setMealTitle] = useState('');
-  const [mealType, setMealType] = useState<MealEditorSnapshot['mealType']>('OTHER');
-  const [consumedTime, setConsumedTime] = useState('');
-  const [notes, setNotes] = useState('');
   const [items, setItems] = useState<EditableItem[]>([]);
+  const [baseItemsById, setBaseItemsById] = useState<Record<string, BaseItemSnapshot>>({});
   const [fieldErrors, setFieldErrors] = useState<MealSaveFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setIsPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  const itemCount = items.length;
+  const totalCalories = useMemo(
+    () => Math.round(items.reduce((sum, item) => sum + (parseNonNegative(item.calories) ?? 0), 0)),
+    [items],
+  );
 
   function resetForm(nextSnapshot: MealEditorSnapshot) {
     setSnapshot(nextSnapshot);
-    setMealTitle(nextSnapshot.title);
-    setMealType(nextSnapshot.mealType);
-    setConsumedTime(nextSnapshot.consumedTime);
-    setNotes(nextSnapshot.notes ?? '');
     setItems(toEditableItems(nextSnapshot));
+    setBaseItemsById(toBaseItems(nextSnapshot));
     setFieldErrors({});
     setFormError(null);
+    setShowDeleteConfirm(false);
+    setActiveIndex(0);
   }
 
   async function handleOpen() {
     setOpen(true);
     if (isDraft) {
+      setLoadError('Taslak öğünler bu panelde düzenlenemez.');
       return;
     }
+
     setLoading(true);
     setLoadError(null);
     setFormError(null);
@@ -110,30 +226,54 @@ export function MealEditorSheet({ mealId, isDraft }: MealEditorSheetProps) {
     resetForm(payload.meal);
   }
 
-  function addItem() {
-    setItems((current) => [
-      ...current,
-      {
-        id: makeItemId(),
-        displayName: '',
-        quantityAmount: '',
-        quantityUnit: '',
-        gramsEstimate: '',
-        calories: '0',
-        proteinGrams: '0',
-        carbGrams: '0',
-        fatGrams: '0',
-        fiberGrams: '0',
-      },
-    ]);
+  function closePanel() {
+    setOpen(false);
+    setShowDeleteConfirm(false);
   }
 
   function removeItem(index: number) {
-    setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setItems((current) => {
+      const nextItems = current.filter((_, itemIndex) => itemIndex !== index);
+      setActiveIndex((currentIndex) => Math.min(currentIndex, Math.max(0, nextItems.length - 1)));
+      return nextItems;
+    });
+    setFieldErrors({});
+    setFormError(null);
   }
 
   function updateItem(index: number, key: keyof EditableItem, value: string) {
     setItems((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
+  }
+
+  function updateQuantity(index: number, value: string) {
+    setItems((current) => {
+      const next = [...current];
+      const target = next[index];
+      if (!target) {
+        return current;
+      }
+
+      target.quantityAmount = value;
+      const baseline = baseItemsById[target.id];
+      const nextQuantity = parsePositive(value);
+
+      if (!baseline || baseline.quantityAmount == null || baseline.quantityAmount <= 0 || !nextQuantity) {
+        return next;
+      }
+
+      const ratio = nextQuantity / baseline.quantityAmount;
+      target.calories = String(roundOne(baseline.calories * ratio));
+      target.proteinGrams = String(roundOne(baseline.proteinGrams * ratio));
+      target.carbGrams = String(roundOne(baseline.carbGrams * ratio));
+      target.fatGrams = String(roundOne(baseline.fatGrams * ratio));
+      target.fiberGrams = String(roundOne(baseline.fiberGrams * ratio));
+
+      if (baseline.gramsEstimate != null && baseline.gramsEstimate > 0) {
+        target.gramsEstimate = String(roundOne(baseline.gramsEstimate * ratio));
+      }
+
+      return next;
+    });
   }
 
   function getFieldError(path: string) {
@@ -148,12 +288,19 @@ export function MealEditorSheet({ mealId, isDraft }: MealEditorSheetProps) {
     setFieldErrors({});
     setFormError(null);
 
+    const requiredErrors = getRequiredFieldErrors(items);
+    if (Object.keys(requiredErrors).length > 0) {
+      setFieldErrors(requiredErrors);
+      setFormError('Eksik alanları tamamla ve tekrar kaydet.');
+      return;
+    }
+
     const parsed = finalMealUpdateSchema.safeParse({
       dayKey: snapshot.dayKey,
-      title: mealTitle,
-      mealType,
-      consumedTime,
-      notes,
+      title: snapshot.title,
+      mealType: snapshot.mealType,
+      consumedTime: snapshot.consumedTime,
+      notes: snapshot.notes,
       items: items.map((item) => ({
         id: item.id,
         displayName: item.displayName,
@@ -193,12 +340,20 @@ export function MealEditorSheet({ mealId, isDraft }: MealEditorSheetProps) {
         return;
       }
 
-      setOpen(false);
+      closePanel();
       router.refresh();
     });
   }
 
-  function handleDelete() {
+  function requestDelete() {
+    setShowDeleteConfirm(true);
+  }
+
+  function cancelDelete() {
+    setShowDeleteConfirm(false);
+  }
+
+  function confirmDelete() {
     if (isPending) {
       return;
     }
@@ -210,215 +365,217 @@ export function MealEditorSheet({ mealId, isDraft }: MealEditorSheetProps) {
 
       if (!response.ok) {
         setFormError('Öğün silinemedi.');
+        setShowDeleteConfirm(false);
         return;
       }
 
-      setOpen(false);
+      setShowDeleteConfirm(false);
+      closePanel();
       router.refresh();
     });
   }
 
-  function handleConfirmDraft() {
-    if (isPending) {
+  function onItemTrackScroll(event: UIEvent<HTMLDivElement>) {
+    const container = event.currentTarget;
+    if (container.clientWidth === 0) {
       return;
     }
 
-    startTransition(async () => {
-      const response = await fetch(`/api/meals/${mealId}/confirm`, {
-        method: 'POST',
-      });
-
-      const payload = (await response.json().catch(() => null)) as { ok: boolean; message?: string } | null;
-
-      if (!response.ok || !payload?.ok) {
-        setFormError(payload?.message ?? 'Taslak onaylanamadı.');
-        return;
-      }
-
-      setOpen(false);
-      router.refresh();
-    });
+    const next = Math.round(container.scrollLeft / container.clientWidth);
+    if (next !== activeIndex) {
+      setActiveIndex(Math.max(0, Math.min(items.length - 1, next)));
+    }
   }
 
   return (
     <>
-      <button type="button" onClick={handleOpen} className={buttonStyles({ variant: 'ghost', size: 'sm' })}>
-        {isDraft ? 'Taslak' : 'Düzenle'}
+      <button type="button" onClick={handleOpen} className={cn(children ? 'w-full text-left' : buttonStyles({ variant: 'ghost', size: 'sm' }), triggerClassName)}>
+        {children ?? (isDraft ? 'Taslak' : 'Düzenle')}
       </button>
 
-      <BottomSheet
-        open={open}
-        onClose={() => setOpen(false)}
-        title={isDraft ? 'Taslak öğün' : 'Öğünü düzenle'}
-        description={isDraft ? 'Taslak öğünler bu panelde düzenlenemez.' : undefined}
-        footer={
-          !isDraft ? (
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" onClick={handleDelete} disabled={isPending}>
-                Sil
-              </Button>
-              <Button onClick={handleSave} disabled={isPending || !snapshot}>
-                {isPending ? 'Kaydediliyor...' : 'Kaydet'}
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" onClick={handleDelete} disabled={isPending}>
-                Sil
-              </Button>
-              <Button onClick={handleConfirmDraft} disabled={isPending}>
-                Onayla
-              </Button>
-            </div>
-          )
-        }
-      >
-        {isDraft ? (
-          <Card tone="subtle" className="text-sm text-slate-700">
-            Bu öğün taslak durumda. Onayla dediğinde güne eklenir.
-          </Card>
-        ) : null}
-
-        {loading ? <Card tone="subtle">Yükleniyor...</Card> : null}
-        {loadError ? <Card tone="subtle" className="text-rose-700">{loadError}</Card> : null}
-
-        {!loading && !loadError && snapshot && !isDraft ? (
-          <div className="space-y-4">
-            {formError ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{formError}</div> : null}
-
-            <Card tone="subtle" className="space-y-4">
+      {open && isPortalReady
+        ? createPortal(
+            <div className="fixed inset-0 z-[70] overflow-hidden bg-white">
+          <div className="mx-auto flex h-[100dvh] min-h-0 w-full max-w-[30rem] flex-col bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-[calc(0.5rem+env(safe-area-inset-top))] sm:px-5 sm:pt-[calc(0.75rem+env(safe-area-inset-top))]">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
               <div>
-                <label htmlFor={`meal-title-${mealId}`} className="text-sm font-semibold text-slate-900">
-                  Öğün adı
-                </label>
-                <Input
-                  id={`meal-title-${mealId}`}
-                  value={mealTitle}
-                  onChange={(event) => setMealTitle(event.target.value)}
-                  className="mt-2"
-                />
-                {getFieldError('title') ? <p className="mt-2 text-sm text-rose-600">{getFieldError('title')}</p> : null}
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Öğün detayı</p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">{snapshot?.title ?? 'Öğün'}</h2>
               </div>
+              <button
+                type="button"
+                onClick={closePanel}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-soft"
+                aria-label="Paneli kapat"
+              >
+                <Icon name="chevronRight" className="h-4 w-4 rotate-90" />
+              </button>
+            </div>
 
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Öğün tipi</p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {mealTypeOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setMealType(option.value)}
-                      className={cn(
-                        'rounded-2xl border px-4 py-3 text-left transition',
-                        mealType === option.value
-                          ? 'border-slate-950 bg-slate-950 text-white shadow-soft'
-                          : 'border-slate-200 bg-white text-slate-800 shadow-soft',
-                      )}
-                    >
-                      <p className="text-sm font-semibold">{option.label}</p>
-                    </button>
-                  ))}
+            {loading ? <Card tone="subtle" className="mt-4">Yükleniyor...</Card> : null}
+            {loadError ? <Card tone="subtle" className="mt-4 text-rose-700">{loadError}</Card> : null}
+
+            {!loading && !loadError && snapshot ? (
+              <>
+                <div className="mt-2.5 flex items-center justify-between rounded-2xl bg-slate-100 px-3 py-2 text-sm">
+                  <p className="font-semibold text-slate-900">Toplam</p>
+                  <p className="font-semibold text-slate-900">{totalCalories} kcal</p>
                 </div>
-              </div>
 
-              <div>
-                <label htmlFor={`meal-time-${mealId}`} className="text-sm font-semibold text-slate-900">
-                  Saat
-                </label>
-                <Input
-                  id={`meal-time-${mealId}`}
-                  type="time"
-                  value={consumedTime}
-                  onChange={(event) => setConsumedTime(event.target.value)}
-                  className="mt-2"
-                />
-              </div>
+                {formError ? (
+                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{formError}</div>
+                ) : null}
 
-              <div>
-                <label htmlFor={`meal-note-${mealId}`} className="text-sm font-semibold text-slate-900">
-                  Not
-                </label>
-                <Textarea
-                  id={`meal-note-${mealId}`}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  className="mt-2"
-                  placeholder="Opsiyonel not"
-                />
-              </div>
-            </Card>
+                <div className="mt-2.5 min-h-0 flex-1 overflow-hidden">
+                  {items.length === 0 ? (
+                    <Card tone="subtle" className="h-full text-center">
+                      <p className="text-base font-semibold text-slate-900">Bu öğünde besin bulunamadı</p>
+                      <p className="mt-2 text-sm text-slate-600">Yeni bir öğün ekleyebilir veya bu kaydı silebilirsin.</p>
+                    </Card>
+                  ) : (
+                    <div className="h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory pb-1" onScroll={onItemTrackScroll}>
+                      <div className="flex h-full min-h-0 gap-2.5">
+                        {items.map((item, index) => (
+                          <div key={item.id} className="h-full min-h-0 w-full shrink-0 snap-center overflow-x-hidden">
+                            <Card tone="subtle" className="flex h-full min-h-0 flex-col overflow-x-hidden p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900">Besin {index + 1}</p>
+                                <button type="button" onClick={() => removeItem(index)} className={buttonStyles({ variant: 'ghost', size: 'sm' })}>
+                                  Sil
+                                </button>
+                              </div>
 
-            {items.map((item, index) => (
-              <Card key={item.id} tone="subtle" className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">Besin {index + 1}</p>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(index)}
-                    disabled={items.length <= 1}
-                    className={buttonStyles({ variant: 'ghost', size: 'sm' })}
-                  >
+                              <div className="mt-2 min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+                                <div>
+                                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Besin adı</label>
+                                  <Input
+                                    value={item.displayName}
+                                    onChange={(event) => updateItem(index, 'displayName', event.target.value)}
+                                    placeholder="Besin adı"
+                                    className="mt-1.5 h-10"
+                                  />
+                                  {getFieldError(`items.${index}.displayName`) ? (
+                                    <p className="mt-1 text-sm text-rose-600">{getFieldError(`items.${index}.displayName`)}</p>
+                                  ) : null}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="min-w-0">
+                                    <label className="block truncate text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Miktar</label>
+                                    <Input
+                                      value={item.quantityAmount}
+                                      onChange={(event) => updateQuantity(index, event.target.value)}
+                                      placeholder="Miktar"
+                                      inputMode="decimal"
+                                      className="mt-1.5 h-10"
+                                    />
+                                    {getFieldError(`items.${index}.quantityAmount`) ? (
+                                      <p className="mt-1 text-sm text-rose-600">{getFieldError(`items.${index}.quantityAmount`)}</p>
+                                    ) : null}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <label className="block truncate text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Birim</label>
+                                    <Input
+                                      value={item.quantityUnit}
+                                      onChange={(event) => updateItem(index, 'quantityUnit', event.target.value)}
+                                      placeholder="Birim"
+                                      className="mt-1.5 h-10"
+                                    />
+                                    {getFieldError(`items.${index}.quantityUnit`) ? (
+                                      <p className="mt-1 text-sm text-rose-600">{getFieldError(`items.${index}.quantityUnit`)}</p>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Gram</label>
+                                  <Input
+                                    value={item.gramsEstimate}
+                                    onChange={(event) => updateItem(index, 'gramsEstimate', event.target.value)}
+                                    placeholder="Gram"
+                                    inputMode="decimal"
+                                    className="mt-1.5 h-10"
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                  {[
+                                    { key: 'calories', label: 'Kalori' },
+                                    { key: 'proteinGrams', label: 'Protein' },
+                                    { key: 'carbGrams', label: 'Karbonhidrat' },
+                                    { key: 'fatGrams', label: 'Yağ' },
+                                    { key: 'fiberGrams', label: 'Lif' },
+                                  ].map((field) => {
+                                    const key = field.key as keyof EditableItem;
+                                    return (
+                                      <div key={field.key} className="min-w-0">
+                                        <label className="block truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{field.label}</label>
+                                        <Input
+                                          value={item[key]}
+                                          onChange={(event) => updateItem(index, key, event.target.value)}
+                                          placeholder={field.label}
+                                          inputMode="decimal"
+                                          className="mt-1.5 h-10"
+                                        />
+                                        {getFieldError(`items.${index}.${field.key}`) ? (
+                                          <p className="mt-1 text-sm text-rose-600">{getFieldError(`items.${index}.${field.key}`)}</p>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </Card>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {itemCount > 1 ? (
+                  <div className="mt-2.5 flex items-center justify-center gap-1.5">
+                    {items.map((item, index) => (
+                      <span
+                        key={item.id}
+                        className={cn('h-1.5 w-1.5 rounded-full transition-all', index === activeIndex ? 'w-4 bg-slate-900' : 'bg-slate-300')}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-2.5 grid grid-cols-2 gap-3 border-t border-slate-200 bg-white pt-2.5">
+                  <Button variant="secondary" onClick={requestDelete} disabled={isPending}>
                     Sil
-                  </button>
+                  </Button>
+                  <Button onClick={handleSave} disabled={isPending || !snapshot}>
+                    {isPending ? 'Kaydediliyor...' : 'Kaydet'}
+                  </Button>
                 </div>
-
-                <Input value={item.displayName} onChange={(event) => updateItem(index, 'displayName', event.target.value)} placeholder="Besin adı" />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    value={item.quantityAmount}
-                    onChange={(event) => updateItem(index, 'quantityAmount', event.target.value)}
-                    placeholder="Miktar"
-                    inputMode="decimal"
-                  />
-                  <Input value={item.quantityUnit} onChange={(event) => updateItem(index, 'quantityUnit', event.target.value)} placeholder="Birim" />
-                  <Input
-                    value={item.gramsEstimate}
-                    onChange={(event) => updateItem(index, 'gramsEstimate', event.target.value)}
-                    placeholder="Gram"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={item.calories}
-                    onChange={(event) => updateItem(index, 'calories', event.target.value)}
-                    placeholder="Kalori"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={item.proteinGrams}
-                    onChange={(event) => updateItem(index, 'proteinGrams', event.target.value)}
-                    placeholder="Protein"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={item.carbGrams}
-                    onChange={(event) => updateItem(index, 'carbGrams', event.target.value)}
-                    placeholder="Karbonhidrat"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={item.fatGrams}
-                    onChange={(event) => updateItem(index, 'fatGrams', event.target.value)}
-                    placeholder="Yağ"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={item.fiberGrams}
-                    onChange={(event) => updateItem(index, 'fiberGrams', event.target.value)}
-                    placeholder="Lif"
-                    inputMode="decimal"
-                  />
-                </div>
-              </Card>
-            ))}
-
-            <button type="button" onClick={addItem} className={buttonStyles({ variant: 'soft', fullWidth: true })}>
-              <Icon name="plus" className="h-4 w-4" />
-              Besin ekle
-            </button>
+              </>
+            ) : null}
           </div>
-        ) : null}
-      </BottomSheet>
+
+          {showDeleteConfirm ? (
+            <div className="absolute inset-0 z-10 flex items-end justify-center bg-slate-950/40 p-4 sm:items-center" role="dialog" aria-modal="true">
+              <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-4 shadow-floating">
+                <h3 className="text-base font-semibold text-slate-950">Öğünü silmek istediğine emin misin?</h3>
+                <p className="mt-2 text-sm text-slate-600">Bu işlem geri alınamaz.</p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Button variant="secondary" onClick={cancelDelete} disabled={isPending}>
+                    Vazgeç
+                  </Button>
+                  <Button onClick={confirmDelete} disabled={isPending}>
+                    {isPending ? 'Siliniyor...' : 'Sil'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

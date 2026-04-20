@@ -1,6 +1,7 @@
 import { prisma } from '@/db/prisma';
 import { getAppDayKey } from '@/lib/date/istanbul';
 import { parseDraftPortion } from '@/lib/meals/draft-review';
+import { estimateGramsFromPortion } from '@/lib/meals/portion-grams';
 import type { MealDraftAnalysisResult } from '@/types/meal-analysis';
 
 type MealDraftConfirmServiceResult =
@@ -19,22 +20,52 @@ function roundValue(value: number) {
   return Math.round(value * 10) / 10;
 }
 
+function toSafeMacro(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+
+  return roundValue(value);
+}
+
+function hasInvalidDraftItems(draftResult: MealDraftAnalysisResult) {
+  return draftResult.items.some((item) => {
+    const hasName = item.displayName.trim().length > 0;
+    const hasMacros =
+      Number.isFinite(item.macros.calories) &&
+      item.macros.calories >= 0 &&
+      Number.isFinite(item.macros.proteinGrams) &&
+      item.macros.proteinGrams >= 0 &&
+      Number.isFinite(item.macros.carbGrams) &&
+      item.macros.carbGrams >= 0 &&
+      Number.isFinite(item.macros.fatGrams) &&
+      item.macros.fatGrams >= 0 &&
+      Number.isFinite(item.macros.fiberGrams) &&
+      item.macros.fiberGrams >= 0;
+
+    return !hasName || !hasMacros;
+  });
+}
+
 export function buildConfirmedMealItemsFromDraft(mealId: string, draftResult: MealDraftAnalysisResult) {
   return draftResult.items.map((item, index) => {
     const portion = parseDraftPortion(item.quantityText);
+    const quantityAmount = portion.quantityAmount != null && portion.quantityAmount > 0 ? roundValue(portion.quantityAmount) : 1;
+    const quantityUnit = (portion.quantityUnit ?? '').trim() || 'porsiyon';
+    const estimatedGrams = estimateGramsFromPortion(quantityAmount, quantityUnit, item.displayName);
 
     return {
       mealId,
       sortOrder: index,
-      displayName: item.displayName,
-      quantityAmount: portion.quantityAmount,
-      quantityUnit: portion.quantityUnit,
-      gramsEstimate: item.gramsEstimate != null ? roundValue(item.gramsEstimate) : null,
-      calories: roundValue(item.macros.calories),
-      proteinGrams: roundValue(item.macros.proteinGrams),
-      carbGrams: roundValue(item.macros.carbGrams),
-      fatGrams: roundValue(item.macros.fatGrams),
-      fiberGrams: roundValue(item.macros.fiberGrams),
+      displayName: item.displayName.trim(),
+      quantityAmount,
+      quantityUnit,
+      gramsEstimate: item.gramsEstimate != null ? roundValue(item.gramsEstimate) : estimatedGrams,
+      calories: toSafeMacro(item.macros.calories),
+      proteinGrams: toSafeMacro(item.macros.proteinGrams),
+      carbGrams: toSafeMacro(item.macros.carbGrams),
+      fatGrams: toSafeMacro(item.macros.fatGrams),
+      fiberGrams: toSafeMacro(item.macros.fiberGrams),
       normalizedFoodEntryId: item.nutritionSource === 'USER_REVIEW' ? null : item.normalizedFoodEntryId,
       nutritionCacheEntryId: item.nutritionSource === 'USER_REVIEW' ? null : item.nutritionCacheEntryId,
     };
@@ -88,6 +119,14 @@ export async function confirmOwnedMealDraft(userId: string, mealId: string): Pro
       ok: false,
       code: 'conflict',
       message: 'Henüz onaylanabilecek bir taslak sonucu yok.',
+    };
+  }
+
+  if (hasInvalidDraftItems(draftResult)) {
+    return {
+      ok: false,
+      code: 'conflict',
+      message: 'Bazı besinlerde ad veya makro bilgisi eksik. Lütfen önce düzenleyip tamamla.',
     };
   }
 

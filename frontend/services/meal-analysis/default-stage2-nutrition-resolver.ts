@@ -1,9 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
 import { getServerEnv } from '@/lib/env';
 import type { MealAnalysisContext, MealAnalysisStage2NutritionResolver } from '@/services/meal-analysis/contracts';
-import { MealAnalysisError } from '@/services/meal-analysis/errors';
 import { resolveNutritionWithOpenAi } from '@/services/meal-analysis/openai-stage2-nutrition-service';
 import type { MealStage1Estimate, MealStage2ResolvedItem } from '@/types/meal-analysis';
+import {
+  estimateHeuristicMacros,
+} from '@/services/meal-analysis/heuristics';
 import {
   buildNutritionCacheKey,
   getSharedCatalogCandidate,
@@ -26,6 +28,58 @@ const LEGACY_FALLBACK_MACROS = {
   fatGrams: 10,
   fiberGrams: 2,
 } as const;
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return 'Unknown stage 2 resolver error.';
+}
+
+function toUserFacingLiveResolverError(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase();
+
+  if (normalized.includes('incorrect api key')) {
+    return 'OpenAI API anahtarı geçersiz.';
+  }
+
+  if (normalized.includes('openai_api_key is missing')) {
+    return 'OpenAI API anahtarı tanımlı değil.';
+  }
+
+  if (normalized.includes('ai_provider is not set to openai')) {
+    return 'AI sağlayıcısı OpenAI olarak ayarlı değil.';
+  }
+
+  if (normalized.includes('401')) {
+    return 'OpenAI yetkilendirme hatası (401).';
+  }
+
+  return errorMessage;
+}
+
+function looksLikePlaceholderDisplayName(value: string) {
+  const normalized = value
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return true;
+  }
+
+  return (
+    /^(image|images|img|photo|camera|uploaded image item|plate item from photo|bowl item from photo|drink from photo|snack item from photo|fotoğraftaki tabak|fotoğraftaki kase|fotoğraftaki içecek|fotoğraftaki atıştırmalık)(?:\s*\d+)?$/.test(
+      normalized,
+    ) || /\.(jpg|jpeg|png|webp|heic|gif|bmp|tiff?)$/.test(normalized)
+  );
+}
 
 function isLegacyFallbackCacheEntry(values: {
   calories: number | null;
@@ -351,6 +405,8 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
             confidence: number;
             reasoning: string;
             gramsEstimate: number | null;
+            canonicalName: string | null;
+            servingSummary: string | null;
           }
         | null = null;
 
@@ -378,15 +434,30 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           confidence: aiResolution.confidence,
           reasoning: aiResolution.reasoning,
           gramsEstimate: aiResolution.gramsEstimate > 0 ? roundNumericValue(aiResolution.gramsEstimate) : null,
+          canonicalName: aiResolution.canonicalName.trim() || null,
+          servingSummary: aiResolution.servingSummary.trim() || null,
         };
       } catch (error) {
-        throw new MealAnalysisError({
-          code: 'analysis_stage2_live_resolution_failed',
-          stage: 'stage_2_nutrition_resolution',
-          message: `Live nutrition resolution failed for "${item.displayName}".`,
-          details: error,
-        });
+        const liveResolutionErrorMessage = getErrorMessage(error);
+        const fallbackEstimate = estimateHeuristicMacros(normalization.normalizedQuery, item.quantityMultiplier);
+        freshResolution = {
+          macros: fallbackEstimate.macros,
+          confidence: Math.min(0.62, Math.max(0.35, fallbackEstimate.confidence)),
+          reasoning: `Live resolver unavailable, heuristic fallback used. ${fallbackEstimate.reasoning}`,
+          gramsEstimate: item.gramsEstimate ?? null,
+          canonicalName: null,
+          servingSummary: null,
+        };
+        warnings.push(`"${item.displayName}" için canlı çözümleme başarısız oldu; tahmini değer kullanıldı. (${toUserFacingLiveResolverError(liveResolutionErrorMessage)})`);
+        void error;
       }
+
+      const resolvedDisplayName =
+        freshResolution.canonicalName && (item.unresolved || looksLikePlaceholderDisplayName(item.displayName))
+          ? freshResolution.canonicalName
+          : item.displayName;
+      const resolvedQuantityText = item.quantityText ?? freshResolution.servingSummary ?? null;
+      const resolvedNormalizedQuery = resolveFoodNormalization(resolvedDisplayName).normalizedQuery;
 
       const createdCacheEntry = await upsertSharedCache(db, {
         cacheKey,
@@ -423,9 +494,9 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
 
       resolvedItems.push({
         id: item.id,
-        displayName: item.displayName,
-        normalizedQuery: item.normalizedQuery,
-        quantityText: item.quantityText,
+        displayName: resolvedDisplayName,
+        normalizedQuery: resolvedNormalizedQuery,
+        quantityText: resolvedQuantityText,
         quantityMultiplier: item.quantityMultiplier,
         gramsEstimate: freshResolution.gramsEstimate ?? item.gramsEstimate ?? null,
         sourceAssetIds: item.sourceAssetIds,
