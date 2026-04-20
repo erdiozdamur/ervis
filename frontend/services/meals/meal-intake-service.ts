@@ -33,7 +33,7 @@ type PersistedBinaryAsset = {
   transcription: AudioTranscriptionResult | null;
 };
 
-const imageMimePattern = /^image\//;
+const imageMimePattern = /^image\/(jpeg|jpg|png|webp|gif)$/i;
 const audioMimePattern = /^audio\//;
 
 function trimText(value: FormDataEntryValue | null) {
@@ -110,7 +110,7 @@ function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): MealDraftCreate
   for (const asset of binaryAssets) {
     if (asset.assetType === 'IMAGE' && !imageMimePattern.test(asset.file.type)) {
       return createValidationError('Seçilen görsellerden biri kabul edilemedi.', {
-        images: 'Fotoğraf ve kamera girişlerinde sadece görsel dosyaları kabul edilir.',
+        images: 'Fotoğraf yüklemede sadece JPEG, PNG, WEBP veya GIF dosyaları desteklenir.',
       });
     }
 

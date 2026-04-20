@@ -16,7 +16,17 @@ test('createMealDraftFromIntake rejects unsupported image uploads before persist
   const result = await createMealDraftFromIntake('user_1', formData);
 
   assert.equal(result.ok, false);
-  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Fotoğraf ve kamera girişlerinde sadece görsel dosyaları kabul edilir.');
+  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Fotoğraf yüklemede sadece JPEG, PNG, WEBP veya GIF dosyaları desteklenir.');
+});
+
+test('createMealDraftFromIntake rejects unsupported HEIC uploads before persistence starts', async () => {
+  const formData = new FormData();
+  formData.append('imageUploads', new File(['heic-image'], 'meal.heic', { type: 'image/heic' }));
+
+  const result = await createMealDraftFromIntake('user_1', formData);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.ok === false ? result.fieldErrors?.images : null, 'Fotoğraf yüklemede sadece JPEG, PNG, WEBP veya GIF dosyaları desteklenir.');
 });
 
 test('createMealDraftFromIntake enforces the per-draft image limit', async () => {

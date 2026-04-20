@@ -156,7 +156,7 @@ test('stage 2 reuses shared catalog entries before fresh resolution', async () =
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'LUNCH',
-      mealTitleSuggestion: 'Lunch draft',
+      mealTitleSuggestion: 'Öğle taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -219,7 +219,7 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -246,7 +246,7 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
   assert.equal(db._foods.length, 0);
 });
 
-test('stage 2 replaces placeholder display names with provider canonical names for unresolved photo items', async () => {
+test('stage 2 keeps generic fallback photo items reviewable instead of renaming them to a guessed food', async () => {
   class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
     protected override async resolveFreshNutritionWithProvider() {
       return {
@@ -294,19 +294,19 @@ test('stage 2 replaces placeholder display names with provider canonical names f
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
           id: 'item_5',
-          displayName: 'images (1)',
-          normalizedQuery: 'images 1',
+          displayName: 'Fotoğraftaki öğün',
+          normalizedQuery: 'fotoğraftaki öğün',
           quantityText: null,
           quantityMultiplier: 1,
           sourceAssetIds: ['asset_5'],
           confidence: 0.4,
           unresolved: true,
-          reasoning: 'Derived from weak image fallback.',
+          reasoning: 'Görsel ayrıştırma tamamlanamadı. Bu yüzden görsel tek öğelik inceleme taslağına indirildi.',
         },
       ],
     },
@@ -314,9 +314,13 @@ test('stage 2 replaces placeholder display names with provider canonical names f
   );
 
   assert.equal(result.resolvedItems.length, 1);
-  assert.equal(result.resolvedItems[0]?.displayName, 'Izgara köfte');
+  assert.equal(result.resolvedItems[0]?.displayName, 'Fotoğraftaki öğün');
   assert.equal(result.resolvedItems[0]?.quantityText, '3 adet');
-  assert.equal(result.resolvedItems[0]?.normalizedQuery, 'ızgara köfte');
+  assert.equal(result.resolvedItems[0]?.normalizedQuery, 'fotoğraftaki öğün');
+  assert.equal(
+    result.warnings.some((warning) => warning.includes('besin adı otomatik netleştirilmedi')),
+    true,
+  );
 });
 
 test('stage 2 falls back to heuristic values when live nutrition resolution is unavailable', async () => {
@@ -346,7 +350,7 @@ test('stage 2 falls back to heuristic values when live nutrition resolution is u
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -399,7 +403,7 @@ test('stage 2 falls back to heuristic macros when live resolver returns authenti
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -463,7 +467,7 @@ test('stage 2 reuses shared cache across safe food variants', async () => {
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -505,7 +509,7 @@ test('stage 2 resolves known branded menu items from local shared catalog when l
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'LUNCH',
-      mealTitleSuggestion: 'Lunch draft',
+      mealTitleSuggestion: 'Öğle taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -564,7 +568,7 @@ test('stage 2 replaces placeholder names with Turkish catalog names', async () =
       provider: 'heuristic-stage1',
       model: 'test-model',
       mealTypeSuggestion: 'DINNER',
-      mealTitleSuggestion: 'Dinner draft',
+      mealTitleSuggestion: 'Akşam taslağı',
       warnings: [],
       estimatedItems: [
         {
@@ -585,4 +589,210 @@ test('stage 2 replaces placeholder names with Turkish catalog names', async () =
 
   assert.equal(result.resolvedItems[0]?.displayName, 'Pilav');
   assert.equal(result.resolvedItems[0]?.normalizedQuery, 'pilav');
+});
+
+test('stage 2 skips shared catalog promotion for generic fallback photo items', async () => {
+  const resolver = new DefaultMealStage2NutritionResolver();
+  const db = createFakeDb({
+    foodEntries: [
+      {
+        id: 'food_salad',
+        slug: 'salad',
+        canonicalName: 'Salad',
+        brandName: null,
+        source: 'OFFICIAL_DATASET',
+        defaultServingAmount: 1,
+        defaultServingUnit: 'plate',
+        calories: 880,
+        proteinGrams: 18,
+        carbGrams: 125,
+        fatGrams: 30,
+        fiberGrams: 12,
+      },
+    ],
+  });
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_generic_photo_catalog',
+      userId: 'user_generic_photo_catalog',
+      analysisRunId: 'run_generic_photo_catalog',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [
+        {
+          id: 'asset_generic_photo_catalog',
+          assetType: 'IMAGE',
+          source: 'upload',
+          textContent: null,
+          mimeType: 'image/jpeg',
+          storageKey: 'uploads/photo.jpg',
+          labelHint: 'IMG_9999.jpg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Akşam taslağı',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_generic_photo_catalog',
+          displayName: 'Fotoğraftaki öğün',
+          normalizedQuery: 'salata',
+          quantityText: '1 tabak',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_generic_photo_catalog'],
+          confidence: 0.34,
+          unresolved: true,
+          reasoning: 'Görsel ayrıştırma tamamlanamadı. Bu yüzden görsel tek öğelik inceleme taslağına indirildi.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.notEqual(result.resolvedItems[0]?.nutritionSource, 'CATALOG');
+  assert.equal(result.resolvedItems[0]?.displayName, 'Fotoğraftaki öğün');
+});
+
+test('stage 2 skips shared cache reuse for generic fallback photo items', async () => {
+  const resolver = new DefaultMealStage2NutritionResolver();
+  const db = createFakeDb({
+    cacheEntries: [
+      {
+        id: 'cache_generic_photo',
+        cacheKey: buildNutritionCacheKey('fotoğraftaki öğün', 1),
+        normalizedFoodEntryId: null,
+        calories: 880,
+        proteinGrams: 18,
+        carbGrams: 125,
+        fatGrams: 30,
+        fiberGrams: 12,
+      },
+    ],
+  });
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_generic_photo_cache',
+      userId: 'user_generic_photo_cache',
+      analysisRunId: 'run_generic_photo_cache',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [
+        {
+          id: 'asset_generic_photo_cache',
+          assetType: 'IMAGE',
+          source: 'upload',
+          textContent: null,
+          mimeType: 'image/jpeg',
+          storageKey: 'uploads/photo.jpg',
+          labelHint: 'IMG_9999.jpg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Akşam taslağı',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_generic_photo_cache',
+          displayName: 'Fotoğraftaki öğün',
+          normalizedQuery: 'fotoğraftaki öğün',
+          quantityText: '1 tabak',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_generic_photo_cache'],
+          confidence: 0.34,
+          unresolved: true,
+          reasoning: 'Görsel ayrıştırma tamamlanamadı. Bu yüzden görsel tek öğelik inceleme taslağına indirildi.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems[0]?.nutritionSource, 'FRESH_ANALYSIS');
+  assert.notEqual(result.resolvedItems[0]?.macros.calories, 880);
+});
+
+test('stage 2 does not write shared cache entries for generic fallback photo items', async () => {
+  class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
+    protected override async resolveFreshNutritionWithProvider() {
+      return {
+        canonicalName: 'Karışık tabak',
+        servingSummary: '1 tabak',
+        gramsEstimate: 420,
+        confidence: 0.78,
+        reasoning: 'Resolved from current image only.',
+        macros: {
+          calories: 540,
+          proteinGrams: 18,
+          carbGrams: 52,
+          fatGrams: 26,
+          fiberGrams: 7,
+        },
+      };
+    }
+  }
+
+  const resolver = new TestStage2Resolver();
+  const db = createFakeDb({});
+
+  const result = await resolver.resolve(
+    {
+      mealId: 'meal_generic_photo_no_cache_write',
+      userId: 'user_generic_photo_no_cache_write',
+      analysisRunId: 'run_generic_photo_no_cache_write',
+      consumedAt: new Date(),
+      mealType: 'DINNER',
+      assets: [
+        {
+          id: 'asset_generic_photo_no_cache_write',
+          assetType: 'IMAGE',
+          source: 'upload',
+          textContent: null,
+          mimeType: 'image/jpeg',
+          storageKey: 'uploads/photo.jpg',
+          labelHint: 'IMG_9999.jpg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+    {
+      stage: 'stage_1_estimation',
+      provider: 'heuristic-stage1',
+      model: 'test-model',
+      mealTypeSuggestion: 'DINNER',
+      mealTitleSuggestion: 'Akşam taslağı',
+      warnings: [],
+      estimatedItems: [
+        {
+          id: 'item_generic_photo_no_cache_write',
+          displayName: 'Fotoğraftaki öğün',
+          normalizedQuery: 'fotoğraftaki öğün',
+          quantityText: '1 tabak',
+          quantityMultiplier: 1,
+          sourceAssetIds: ['asset_generic_photo_no_cache_write'],
+          confidence: 0.34,
+          unresolved: true,
+          reasoning: 'Görsel ayrıştırma tamamlanamadı. Bu yüzden görsel tek öğelik inceleme taslağına indirildi.',
+        },
+      ],
+    },
+    db as never,
+  );
+
+  assert.equal(result.resolvedItems[0]?.nutritionSource, 'FRESH_ANALYSIS');
+  assert.equal(result.resolvedItems[0]?.nutritionCacheEntryId, null);
+  assert.equal(db._cache.length, 0);
 });

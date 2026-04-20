@@ -1,7 +1,7 @@
 import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
-import { extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
+import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
 import type { MealAnalysisAssetInput, ResolvedNutritionMacros } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -14,6 +14,12 @@ type OpenAiResolvedNutrition = {
   confidence: number;
   reasoning: string;
   macros: ResolvedNutritionMacros;
+  diagnostics: {
+    responseId: string | null;
+    responseStatus: string | null;
+    structuredOutputFound: boolean;
+    outputTextPreview: string | null;
+  };
 };
 
 type OpenAiResolutionInput = {
@@ -31,6 +37,22 @@ type OpenAiResolutionInput = {
     sourceAssets: MealAnalysisAssetInput[];
   };
 };
+
+function looksLikeGenericPhotoPlaceholder(value: string) {
+  const normalized = value
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return (
+    normalized === 'fotoğraftaki öğün' ||
+    normalized === 'fotoğraftaki tabak' ||
+    normalized === 'fotoğraftaki kase' ||
+    normalized === 'fotoğraftaki içecek' ||
+    normalized === 'fotoğraftaki atıştırmalık'
+  );
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -107,6 +129,7 @@ function createStructuredOutputSchema() {
 }
 
 export function parseStructuredNutritionPayload(payload: unknown): OpenAiResolvedNutrition {
+  const diagnostics = extractResponseDiagnostics(payload);
   const data = extractStructuredOutputData(payload);
   const macros = data.macros && typeof data.macros === 'object' ? (data.macros as Record<string, unknown>) : null;
 
@@ -133,6 +156,7 @@ export function parseStructuredNutritionPayload(payload: unknown): OpenAiResolve
       fatGrams: roundMacro(typeof macros.fatGrams === 'number' ? macros.fatGrams : 0),
       fiberGrams: roundMacro(typeof macros.fiberGrams === 'number' ? macros.fiberGrams : 0),
     },
+    diagnostics,
   };
 
   if (parsed.macros.calories <= 0) {
@@ -147,10 +171,12 @@ function buildUserPrompt(input: OpenAiResolutionInput) {
     input.mealContext.textContext.length > 0
       ? input.mealContext.textContext.map((entry, index) => `${index + 1}. ${entry}`).join('\n')
       : 'No transcript or typed context was available.';
+  const itemKind = looksLikeGenericPhotoPlaceholder(input.item.displayName) ? 'generic_photo_placeholder' : 'named_food_item';
 
   return [
     `Meal type: ${input.mealContext.mealType}`,
     `Consumed at: ${input.mealContext.consumedAtIso}`,
+    `Item kind: ${itemKind}`,
     `Item display name: ${input.item.displayName}`,
     `Normalized query: ${input.item.normalizedQuery}`,
     `Quantity text: ${input.item.quantityText ?? 'none'}`,
@@ -216,6 +242,9 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
         'Return nutrition for exactly one reviewable meal item.',
         'Be practical and realistic for Turkish daily eating patterns and globally known branded fast foods.',
         'Return canonicalName in Turkish.',
+        'If the item is a generic photo placeholder such as "Fotoğraftaki öğün", use the attached image as the primary evidence.',
+        'For generic photo placeholders, do not hallucinate a specific single dish name unless it is visually obvious; estimate the visible plate conservatively.',
+        'If the image appears to contain several separate foods but stage 1 failed to split them, estimate the total visible plate for this one review item.',
         'If the item clearly refers to a branded combo or menu, estimate the full combo unless the text excludes fries or drink.',
         'If quantity text is colloquial, infer a plausible single-user serving.',
         'Do not return implausibly low placeholder values.',

@@ -2,6 +2,23 @@ function getObjectRecord(value: unknown) {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 }
 
+export function extractResponseDiagnostics(payload: unknown) {
+  const payloadRecord = getObjectRecord(payload);
+  const outputText = extractStructuredOutputText(payload);
+  const structuredJson = extractStructuredOutputJson(payload);
+
+  return {
+    responseId:
+      payloadRecord && typeof payloadRecord.id === 'string' && payloadRecord.id.trim() ? payloadRecord.id.trim() : null,
+    responseStatus:
+      payloadRecord && typeof payloadRecord.status === 'string' && payloadRecord.status.trim()
+        ? payloadRecord.status.trim()
+        : null,
+    structuredOutputFound: Boolean(structuredJson || outputText),
+    outputTextPreview: outputText ? outputText.slice(0, 240) : null,
+  };
+}
+
 function getStringValue(value: unknown) {
   if (typeof value === 'string') {
     const trimmed = value.trim();

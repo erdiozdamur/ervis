@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseStructuredPayload } from '@/services/meal-analysis/openai-stage1-image-itemizer';
+import { looksLikeSeparatedPlatterLabel, parseStructuredPayload } from '@/services/meal-analysis/openai-stage1-image-itemizer';
 import { parseStructuredNutritionPayload } from '@/services/meal-analysis/openai-stage2-nutrition-service';
 
 test('stage 1 parser accepts top-level output_parsed payloads', () => {
@@ -79,4 +79,10 @@ test('stage 2 parser accepts structured content parts without output_text', () =
   assert.equal(result.servingSummary, '1 kase');
   assert.equal(result.macros.calories, 180);
   assert.equal(result.gramsEstimate, 260);
+});
+
+test('stage 1 detects platter-style umbrella labels that should be split again', () => {
+  assert.equal(looksLikeSeparatedPlatterLabel('Karışık Türk Mezesi Tabağı'), true);
+  assert.equal(looksLikeSeparatedPlatterLabel('Kahvaltı tabağı'), true);
+  assert.equal(looksLikeSeparatedPlatterLabel('Karnıyarık'), false);
 });

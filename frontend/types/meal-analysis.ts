@@ -39,6 +39,19 @@ export type MealStage1Estimate = {
   mealTitleSuggestion: string;
   warnings: string[];
   estimatedItems: MealStage1EstimatedItem[];
+  diagnostics?: {
+    itemizer: {
+      responseId: string | null;
+      responseStatus: string | null;
+      structuredOutputFound: boolean;
+      outputTextPreview: string | null;
+      rawItemCount: number;
+      finalItemCount: number;
+      retryTriggered: boolean;
+      retryUsed: boolean;
+      fallbackReason: string | null;
+    };
+  };
 };
 
 export type ResolvedNutritionMacros = {
@@ -77,6 +90,18 @@ export type MealStage2Resolution = {
   model: string;
   warnings: string[];
   resolvedItems: MealStage2ResolvedItem[];
+  diagnostics?: {
+    nutritionResolver: {
+      responseId: string | null;
+      responseStatus: string | null;
+      structuredOutputFound: boolean;
+      outputTextPreview: string | null;
+      canonicalName: string | null;
+      gramsEstimate: number | null;
+      genericPhotoPlaceholder: boolean;
+      usedImageContext: boolean;
+    };
+  };
 };
 
 export type MealDraftAnalysisResult = {

@@ -82,6 +82,34 @@ function looksLikePlaceholderDisplayName(value: string) {
   );
 }
 
+function isGenericImageFallbackItem(
+  item: MealStage1Estimate['estimatedItems'][number],
+  context: MealAnalysisContext,
+) {
+  if (!item.unresolved) {
+    return false;
+  }
+
+  if (!looksLikePlaceholderDisplayName(item.displayName) && item.displayName !== 'Fotoğraftaki öğün') {
+    return false;
+  }
+
+  const hasImageSource = context.assets.some(
+    (asset) => item.sourceAssetIds.includes(asset.id) && asset.assetType === 'IMAGE',
+  );
+
+  if (!hasImageSource) {
+    return false;
+  }
+
+  const normalizedReasoning = item.reasoning.toLocaleLowerCase('tr-TR');
+  return (
+    normalizedReasoning.includes('tek öğelik inceleme taslağına indirildi') ||
+    normalizedReasoning.includes('weak image fallback') ||
+    normalizedReasoning.includes('fotoğraf etiketi çözümlemesinden')
+  );
+}
+
 function isLegacyFallbackCacheEntry(values: {
   calories: number | null;
   proteinGrams: number | null;
@@ -238,25 +266,50 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
   async resolve(context: MealAnalysisContext, estimate: MealStage1Estimate, db: PrismaClient) {
     const warnings = [...estimate.warnings];
     const resolvedItems: MealStage2ResolvedItem[] = [];
+    let stage2Diagnostics:
+      | {
+          responseId: string | null;
+          responseStatus: string | null;
+          structuredOutputFound: boolean;
+          outputTextPreview: string | null;
+          canonicalName: string | null;
+          gramsEstimate: number | null;
+          genericPhotoPlaceholder: boolean;
+          usedImageContext: boolean;
+        }
+      | null = null;
 
     for (const item of estimate.estimatedItems) {
+      const genericImageFallbackItem = isGenericImageFallbackItem(item, context);
       const normalization = resolveFoodNormalization(item.normalizedQuery);
       const cacheKey = buildNutritionCacheKey(normalization.cacheIdentity, item.quantityMultiplier);
-      const cached = await db.nutritionCacheEntry.findUnique({
-        where: { cacheKey },
-        select: {
-          id: true,
-          normalizedFoodEntryId: true,
-          calories: true,
-          proteinGrams: true,
-          carbGrams: true,
-          fatGrams: true,
-          fiberGrams: true,
-        },
-      });
+      const cached = genericImageFallbackItem
+        ? null
+        : await db.nutritionCacheEntry.findUnique({
+            where: { cacheKey },
+            select: {
+              id: true,
+              normalizedFoodEntryId: true,
+              calories: true,
+              proteinGrams: true,
+              carbGrams: true,
+              fatGrams: true,
+              fiberGrams: true,
+            },
+          });
 
       if (cached && !isLegacyFallbackCacheEntry(toResolvedMacros(cached))) {
         await touchCacheEntry(db, cacheKey);
+        stage2Diagnostics = {
+          responseId: null,
+          responseStatus: 'cache_hit',
+          structuredOutputFound: false,
+          outputTextPreview: null,
+          canonicalName: item.displayName,
+          gramsEstimate: item.gramsEstimate ?? null,
+          genericPhotoPlaceholder: genericImageFallbackItem,
+          usedImageContext: context.assets.some((asset) => asset.assetType === 'IMAGE'),
+        };
 
         resolvedItems.push({
           id: item.id,
@@ -283,7 +336,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         continue;
       }
 
-      const sharedCatalogMatch = await findSharedCatalogMatch(db, normalization);
+      const sharedCatalogMatch = genericImageFallbackItem ? null : await findSharedCatalogMatch(db, normalization);
 
       if (sharedCatalogMatch) {
         const scaledMacros = scaleResolvedMacros(toResolvedMacros(sharedCatalogMatch.entry), item.quantityMultiplier);
@@ -291,6 +344,16 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           looksLikePlaceholderDisplayName(item.displayName) || !item.displayName.trim()
             ? localizeFoodDisplayName(sharedCatalogMatch.entry.canonicalName)
             : item.displayName;
+        stage2Diagnostics = {
+          responseId: null,
+          responseStatus: 'shared_catalog',
+          structuredOutputFound: false,
+          outputTextPreview: null,
+          canonicalName: resolvedCatalogDisplayName,
+          gramsEstimate: item.gramsEstimate ?? null,
+          genericPhotoPlaceholder: genericImageFallbackItem,
+          usedImageContext: context.assets.some((asset) => asset.assetType === 'IMAGE'),
+        };
         const createdCacheEntry = await upsertSharedCache(db, {
           cacheKey,
           normalizedQueryText: normalization.canonicalQuery,
@@ -346,7 +409,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         continue;
       }
 
-      const heuristicCandidate = getSharedCatalogCandidate(normalization.normalizedQuery);
+      const heuristicCandidate = genericImageFallbackItem ? null : getSharedCatalogCandidate(normalization.normalizedQuery);
       if (heuristicCandidate && shouldPromoteSharedCatalogCandidate(normalization.normalizedQuery, heuristicCandidate)) {
         const heuristicCatalogEntry = await ensureHeuristicCatalogEntry(db, heuristicCandidate);
         const scaledMacros = scaleResolvedMacros(toResolvedMacros(heuristicCatalogEntry), item.quantityMultiplier);
@@ -354,6 +417,16 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           looksLikePlaceholderDisplayName(item.displayName) || !item.displayName.trim()
             ? heuristicCandidate.localizedName
             : item.displayName;
+        stage2Diagnostics = {
+          responseId: null,
+          responseStatus: 'heuristic_catalog',
+          structuredOutputFound: false,
+          outputTextPreview: null,
+          canonicalName: resolvedCatalogDisplayName,
+          gramsEstimate: item.gramsEstimate ?? null,
+          genericPhotoPlaceholder: genericImageFallbackItem,
+          usedImageContext: context.assets.some((asset) => asset.assetType === 'IMAGE'),
+        };
         const createdCacheEntry = await upsertSharedCache(db, {
           cacheKey,
           normalizedQueryText: normalization.canonicalQuery,
@@ -416,6 +489,12 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
             gramsEstimate: number | null;
             canonicalName: string | null;
             servingSummary: string | null;
+            diagnostics: {
+              responseId: string | null;
+              responseStatus: string | null;
+              structuredOutputFound: boolean;
+              outputTextPreview: string | null;
+            } | null;
           }
         | null = null;
 
@@ -445,6 +524,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           gramsEstimate: aiResolution.gramsEstimate > 0 ? roundNumericValue(aiResolution.gramsEstimate) : null,
           canonicalName: aiResolution.canonicalName.trim() || null,
           servingSummary: aiResolution.servingSummary.trim() || null,
+          diagnostics: aiResolution.diagnostics,
         };
       } catch (error) {
         const liveResolutionErrorMessage = getErrorMessage(error);
@@ -456,49 +536,68 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
           gramsEstimate: item.gramsEstimate ?? null,
           canonicalName: null,
           servingSummary: null,
+          diagnostics: null,
         };
         warnings.push(`"${item.displayName}" için canlı çözümleme başarısız oldu; tahmini değer kullanıldı. (${toUserFacingLiveResolverError(liveResolutionErrorMessage)})`);
         void error;
       }
 
       const resolvedDisplayName =
-        freshResolution.canonicalName && (item.unresolved || looksLikePlaceholderDisplayName(item.displayName))
+        !genericImageFallbackItem &&
+        freshResolution.canonicalName &&
+        (item.unresolved || looksLikePlaceholderDisplayName(item.displayName))
           ? localizeFoodDisplayName(freshResolution.canonicalName)
           : item.displayName;
+      stage2Diagnostics = {
+        responseId: freshResolution.diagnostics?.responseId ?? null,
+        responseStatus: freshResolution.diagnostics?.responseStatus ?? 'fresh_analysis',
+        structuredOutputFound: freshResolution.diagnostics?.structuredOutputFound ?? false,
+        outputTextPreview: freshResolution.diagnostics?.outputTextPreview ?? null,
+        canonicalName: freshResolution.canonicalName,
+        gramsEstimate: freshResolution.gramsEstimate ?? item.gramsEstimate ?? null,
+        genericPhotoPlaceholder: genericImageFallbackItem,
+        usedImageContext: context.assets.some((asset) => asset.assetType === 'IMAGE'),
+      };
       const resolvedQuantityText = item.quantityText ?? freshResolution.servingSummary ?? null;
       const resolvedNormalizedQuery = resolveFoodNormalization(resolvedDisplayName).normalizedQuery;
 
-      const createdCacheEntry = await upsertSharedCache(db, {
-        cacheKey,
-        normalizedQueryText: normalization.canonicalQuery,
-        source: 'AI_ESTIMATE',
-        provider: this.provider,
-        normalizedFoodEntryId: null,
-        servingAmount: roundNumericValue(item.quantityMultiplier),
-        servingUnit: item.quantityText ?? 'portion',
-        calories: freshResolution.macros.calories,
-        proteinGrams: freshResolution.macros.proteinGrams,
-        carbGrams: freshResolution.macros.carbGrams,
-        fatGrams: freshResolution.macros.fatGrams,
-        fiberGrams: freshResolution.macros.fiberGrams,
-        payloadJson: {
-          resolutionMethod: 'fresh_analysis',
-          resolvedBy: this.provider,
-          resolvedAt: new Date().toISOString(),
-          matchConfidence: Math.min(normalization.normalizationConfidence || freshResolution.confidence, freshResolution.confidence),
-          matchedKeyword: normalization.matchedKeyword,
-          normalizedFoodEntryId: null,
-          catalogSlug: normalization.strategy === 'safe_variant_family' ? normalization.canonicalSlug : null,
-          cacheIdentity: normalization.cacheIdentity,
-          normalizationStrategy: normalization.strategy,
-          removedDescriptors: normalization.removedDescriptors,
-          contextMealId: context.mealId,
-          reasoning: freshResolution.reasoning,
-        },
-      });
+      const createdCacheEntry = genericImageFallbackItem
+        ? null
+        : await upsertSharedCache(db, {
+            cacheKey,
+            normalizedQueryText: normalization.canonicalQuery,
+            source: 'AI_ESTIMATE',
+            provider: this.provider,
+            normalizedFoodEntryId: null,
+            servingAmount: roundNumericValue(item.quantityMultiplier),
+            servingUnit: item.quantityText ?? 'portion',
+            calories: freshResolution.macros.calories,
+            proteinGrams: freshResolution.macros.proteinGrams,
+            carbGrams: freshResolution.macros.carbGrams,
+            fatGrams: freshResolution.macros.fatGrams,
+            fiberGrams: freshResolution.macros.fiberGrams,
+            payloadJson: {
+              resolutionMethod: 'fresh_analysis',
+              resolvedBy: this.provider,
+              resolvedAt: new Date().toISOString(),
+              matchConfidence: Math.min(normalization.normalizationConfidence || freshResolution.confidence, freshResolution.confidence),
+              matchedKeyword: normalization.matchedKeyword,
+              normalizedFoodEntryId: null,
+              catalogSlug: normalization.strategy === 'safe_variant_family' ? normalization.canonicalSlug : null,
+              cacheIdentity: normalization.cacheIdentity,
+              normalizationStrategy: normalization.strategy,
+              removedDescriptors: normalization.removedDescriptors,
+              contextMealId: context.mealId,
+              reasoning: freshResolution.reasoning,
+            },
+          });
 
       if (item.unresolved) {
         warnings.push(`"${item.displayName}" needs user review because the source was not structured text.`);
+      }
+
+      if (genericImageFallbackItem) {
+        warnings.push(`"${item.displayName}" görselden tek öğe fallback olarak kaldı; besin adı otomatik netleştirilmedi.`);
       }
 
       resolvedItems.push({
@@ -513,7 +612,7 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
         unresolved: item.unresolved,
         reasoning: `${item.reasoning} ${freshResolution.reasoning}`,
         nutritionSource: 'FRESH_ANALYSIS',
-        nutritionCacheEntryId: createdCacheEntry.id,
+        nutritionCacheEntryId: createdCacheEntry?.id ?? null,
         normalizedFoodEntryId: null,
         resolutionMetadata: {
           method: 'fresh_analysis',
@@ -530,6 +629,20 @@ export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2Nut
       model: this.model,
       warnings,
       resolvedItems,
+      diagnostics: stage2Diagnostics
+        ? {
+            nutritionResolver: {
+              responseId: stage2Diagnostics.responseId,
+              responseStatus: stage2Diagnostics.responseStatus,
+              structuredOutputFound: stage2Diagnostics.structuredOutputFound,
+              outputTextPreview: stage2Diagnostics.outputTextPreview,
+              canonicalName: stage2Diagnostics.canonicalName,
+              gramsEstimate: stage2Diagnostics.gramsEstimate,
+              genericPhotoPlaceholder: stage2Diagnostics.genericPhotoPlaceholder,
+              usedImageContext: stage2Diagnostics.usedImageContext,
+            },
+          }
+        : undefined,
     };
   }
 }
