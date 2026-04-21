@@ -62,10 +62,11 @@ enum ProfileActivityLevel {
   VERY_ACTIVE
 }
 
-enum UserRole {
-  USER
-  ADMIN
+enum Role {
   OWNER
+  ADMIN
+  OPERATOR
+  USER
 }
 
 model AppMeta {
@@ -107,11 +108,23 @@ model User {
   updatedPromptTemplates PromptTemplate[] @relation("PromptTemplateUpdatedBy")
   accounts              Account[]
   sessions         Session[]
-  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditActor")
+  roles            UserRole[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@map("users")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([role])
+  @@map("user_roles")
 }
 
 /// Reserved for auth provider connections so social login can be added later.
