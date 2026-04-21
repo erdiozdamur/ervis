@@ -1,14 +1,16 @@
 import { ScreenHeader } from '@/components/layout/screen-header';
-import { StatePanel } from '@/components/ui/state-panel';
 import { requireCurrentUser } from '@/lib/auth/session';
 import { isAdminEmail } from '@/lib/auth/admin';
 import { getAdminSecretStatusesSafe } from '@/services/secrets/secret-admin-service';
 import { notFound } from 'next/navigation';
+import { getAnalysisRules } from '@/services/meal-analysis/analysis-rule-repository';
+import { AnalysisRulesEditor } from '@/components/admin/analysis-rules-editor';
 
 export default async function AdminPage() {
   const user = await requireCurrentUser();
+  const hasAccess = await requireAdminPageAccess(user.id);
 
-  if (!isAdminEmail(user.email)) {
+  if (!hasAccess) {
     notFound();
   }
 
