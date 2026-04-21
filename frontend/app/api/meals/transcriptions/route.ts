@@ -24,8 +24,9 @@ export async function POST(request: Request) {
       {
         ok: false,
         message: transcription.message ?? 'Ses kaydı şu anda çözümlenemedi.',
+        status: transcription.status,
       },
-      { status: 422 },
+      { status: 200 },
     );
   }
 
