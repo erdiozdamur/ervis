@@ -1,4 +1,4 @@
-import { getRuntimeConfig } from '@/services/config/runtime-config-service';
+import { getServerEnv } from '@/lib/env';
 
 const OPENAI_AUDIO_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
@@ -48,10 +48,10 @@ export function parseOpenAiAudioTranscriptionPayload(payload: unknown): ParsedTr
 }
 
 export async function transcribeMealAudioFile(file: File): Promise<AudioTranscriptionResult> {
-  const runtimeConfig = await getRuntimeConfig();
-  const model = runtimeConfig.OPENAI_TRANSCRIPTION_MODEL;
+  const env = getServerEnv();
+  const model = env.OPENAI_TRANSCRIPTION_MODEL;
 
-  if (runtimeConfig.AI_PROVIDER !== 'openai' || !runtimeConfig.AI_FEATURE_AUDIO_TRANSCRIPTION) {
+  if (env.AI_PROVIDER !== 'openai') {
     return {
       status: 'skipped',
       transcriptText: null,
@@ -63,7 +63,7 @@ export async function transcribeMealAudioFile(file: File): Promise<AudioTranscri
     };
   }
 
-  if (!runtimeConfig.OPENAI_API_KEY) {
+  if (!env.OPENAI_API_KEY) {
     return {
       status: 'skipped',
       transcriptText: null,
@@ -84,7 +84,7 @@ export async function transcribeMealAudioFile(file: File): Promise<AudioTranscri
     const response = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${runtimeConfig.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
       },
       body: formData,
     });

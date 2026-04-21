@@ -27,40 +27,14 @@ const serverEnvSchema = z.object({
   TZ: z.string().default(DEFAULT_APP_TIME_ZONE),
 });
 
-const runtimeConfigBootstrapSchema = z.object({
-  AI_PROVIDER: z.string().default('openai'),
-  OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default('gpt-4.1-mini'),
-  OPENAI_TRANSCRIPTION_MODEL: z.string().default('gpt-4o-mini-transcribe'),
-  AI_ANALYSIS_PROMPT_VERSION: z.string().default('meal-intake-v1'),
-  MEAL_ANALYSIS_STAGE1_MODEL: z.string().default('gpt-4.1-mini'),
-  MEAL_ANALYSIS_STAGE2_MODEL: z.string().default('gpt-4.1-mini'),
-  AI_FEATURE_IMAGE_ANALYSIS: z.coerce.boolean().default(true),
-  AI_FEATURE_AUDIO_TRANSCRIPTION: z.coerce.boolean().default(true),
-  AI_MAX_INPUT_ASSET_COUNT: z.coerce.number().int().positive().default(8),
-  AI_MAX_TRANSCRIPT_CHARACTERS: z.coerce.number().int().positive().default(4000),
-});
-
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
-export type RuntimeConfigBootstrap = z.infer<typeof runtimeConfigBootstrapSchema>;
 export type RuntimeEnvCheck = {
   databaseConfigured: boolean;
   authSecretConfigured: boolean;
   authUrlConfigured: boolean;
-  managedSecrets: {
-    authSecret: {
-      configured: boolean;
-      source: 'env';
-    };
-    openAiApiKey: {
-      configured: boolean;
-      source: 'env';
-    };
-  };
 };
 
 let cachedEnv: ServerEnv | null = null;
-let cachedRuntimeBootstrap: RuntimeConfigBootstrap | null = null;
 
 export function getServerEnv(): ServerEnv {
   if (cachedEnv) {
@@ -96,28 +70,6 @@ export function getServerEnv(): ServerEnv {
   return cachedEnv;
 }
 
-export function getRuntimeConfigBootstrap(): RuntimeConfigBootstrap {
-  if (cachedRuntimeBootstrap) {
-    return cachedRuntimeBootstrap;
-  }
-
-  cachedRuntimeBootstrap = runtimeConfigBootstrapSchema.parse({
-    AI_PROVIDER: process.env.AI_PROVIDER,
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    OPENAI_MODEL: process.env.OPENAI_MODEL,
-    OPENAI_TRANSCRIPTION_MODEL: process.env.OPENAI_TRANSCRIPTION_MODEL,
-    AI_ANALYSIS_PROMPT_VERSION: process.env.AI_ANALYSIS_PROMPT_VERSION,
-    MEAL_ANALYSIS_STAGE1_MODEL: process.env.MEAL_ANALYSIS_STAGE1_MODEL,
-    MEAL_ANALYSIS_STAGE2_MODEL: process.env.MEAL_ANALYSIS_STAGE2_MODEL,
-    AI_FEATURE_IMAGE_ANALYSIS: process.env.AI_FEATURE_IMAGE_ANALYSIS,
-    AI_FEATURE_AUDIO_TRANSCRIPTION: process.env.AI_FEATURE_AUDIO_TRANSCRIPTION,
-    AI_MAX_INPUT_ASSET_COUNT: process.env.AI_MAX_INPUT_ASSET_COUNT,
-    AI_MAX_TRANSCRIPT_CHARACTERS: process.env.AI_MAX_TRANSCRIPT_CHARACTERS,
-  });
-
-  return cachedRuntimeBootstrap;
-}
-
 export function getRuntimeEnvChecks(): RuntimeEnvCheck {
   const env = getServerEnv();
 
@@ -125,15 +77,5 @@ export function getRuntimeEnvChecks(): RuntimeEnvCheck {
     databaseConfigured: Boolean(env.DATABASE_URL),
     authSecretConfigured: Boolean(env.AUTH_SECRET),
     authUrlConfigured: Boolean(env.NEXTAUTH_URL || env.NEXT_PUBLIC_APP_URL),
-    managedSecrets: {
-      authSecret: {
-        configured: Boolean(env.AUTH_SECRET),
-        source: 'env',
-      },
-      openAiApiKey: {
-        configured: Boolean(env.OPENAI_API_KEY),
-        source: 'env',
-      },
-    },
   };
 }
