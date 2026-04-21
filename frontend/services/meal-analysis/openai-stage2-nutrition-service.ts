@@ -1,12 +1,7 @@
-import { getRuntimeConfig } from '@/services/config/runtime-config-service';
+import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
-import {
-  getActivePromptTemplate,
-  PROMPT_TEMPLATE_KEYS,
-  renderPromptTemplate,
-} from '@/services/meal-analysis/prompt-template-service';
 import type { MealAnalysisAssetInput, ResolvedNutritionMacros } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -171,37 +166,25 @@ export function parseStructuredNutritionPayload(payload: unknown): OpenAiResolve
   return parsed;
 }
 
-function buildUserPrompt(input: OpenAiResolutionInput, template: string) {
+function buildUserPrompt(input: OpenAiResolutionInput) {
   const textContext =
     input.mealContext.textContext.length > 0
       ? input.mealContext.textContext.map((entry, index) => `${index + 1}. ${entry}`).join('\n')
       : 'No transcript or typed context was available.';
   const itemKind = looksLikeGenericPhotoPlaceholder(input.item.displayName) ? 'generic_photo_placeholder' : 'named_food_item';
 
-  const rendered = renderPromptTemplate(
-    {
-      id: 'inline',
-      key: PROMPT_TEMPLATE_KEYS.stage2NutritionResolver,
-      version: 'inline',
-      locale: 'tr-TR',
-      systemInstructions: '',
-      userTemplate: template,
-      source: 'default',
-    },
-    {
-      mealType: input.mealContext.mealType,
-      consumedAtIso: input.mealContext.consumedAtIso,
-      itemKind,
-      displayName: input.item.displayName,
-      normalizedQuery: input.item.normalizedQuery,
-      quantityText: input.item.quantityText ?? 'none',
-      quantityMultiplier: input.item.quantityMultiplier,
-      reasoning: input.item.reasoning,
-      textContext,
-    },
-  );
-
-  return rendered.userPrompt;
+  return [
+    `Meal type: ${input.mealContext.mealType}`,
+    `Consumed at: ${input.mealContext.consumedAtIso}`,
+    `Item kind: ${itemKind}`,
+    `Item display name: ${input.item.displayName}`,
+    `Normalized query: ${input.item.normalizedQuery}`,
+    `Quantity text: ${input.item.quantityText ?? 'none'}`,
+    `Quantity multiplier: ${input.item.quantityMultiplier}`,
+    `Stage 1 reasoning: ${input.item.reasoning}`,
+    'Meal text and transcript context:',
+    textContext,
+  ].join('\n');
 }
 
 async function buildImageContentParts(sourceAssets: MealAnalysisAssetInput[]) {
@@ -227,22 +210,20 @@ async function buildImageContentParts(sourceAssets: MealAnalysisAssetInput[]) {
 }
 
 export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): Promise<OpenAiResolvedNutrition> {
-  const runtimeConfig = await getRuntimeConfig();
+  const env = getServerEnv();
 
-  if (runtimeConfig.AI_PROVIDER !== 'openai' || !runtimeConfig.AI_FEATURE_IMAGE_ANALYSIS) {
+  if (env.AI_PROVIDER !== 'openai') {
     throw new Error('OpenAI nutrition resolution is disabled because AI_PROVIDER is not set to openai.');
   }
 
-  if (!runtimeConfig.OPENAI_API_KEY) {
+  if (!env.OPENAI_API_KEY) {
     throw new Error('OpenAI nutrition resolution is not configured because OPENAI_API_KEY is missing.');
   }
-
-  const promptTemplate = await getActivePromptTemplate(PROMPT_TEMPLATE_KEYS.stage2NutritionResolver);
 
   const userContent: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string }> = [
     {
       type: 'input_text',
-      text: buildUserPrompt(input, promptTemplate.userTemplate),
+      text: buildUserPrompt(input),
     },
   ];
 
@@ -251,12 +232,24 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${runtimeConfig.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: runtimeConfig.MEAL_ANALYSIS_STAGE2_MODEL,
-      instructions: promptTemplate.systemInstructions,
+      model: env.MEAL_ANALYSIS_STAGE2_MODEL,
+      instructions: [
+        'You are resolving nutrition for a mobile calorie tracking app.',
+        'Return nutrition for exactly one reviewable meal item.',
+        'Be practical and realistic for Turkish daily eating patterns and globally known branded fast foods.',
+        'Return canonicalName in Turkish.',
+        'If the item is a generic photo placeholder such as "Fotoğraftaki öğün", use the attached image as the primary evidence.',
+        'For generic photo placeholders, do not hallucinate a specific single dish name unless it is visually obvious; estimate the visible plate conservatively.',
+        'If the image appears to contain several separate foods but stage 1 failed to split them, estimate the total visible plate for this one review item.',
+        'If the item clearly refers to a branded combo or menu, estimate the full combo unless the text excludes fries or drink.',
+        'If quantity text is colloquial, infer a plausible single-user serving.',
+        'Do not return implausibly low placeholder values.',
+        'Prefer conservative but believable numbers and keep the result easy for a human to review and edit.',
+      ].join(' '),
       input: [
         {
           role: 'user',

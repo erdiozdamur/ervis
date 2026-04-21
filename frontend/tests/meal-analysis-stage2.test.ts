@@ -184,7 +184,7 @@ test('stage 2 reuses shared catalog entries before fresh resolution', async () =
 
 test('stage 2 stores fresh analysis output for future reuse when no shared match exists', async () => {
   class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
-    protected override async resolveFreshNutritionWithProvider(_input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0]) {
+    protected override async resolveFreshNutritionWithProvider() {
       return {
         canonicalName: 'Chicken wrap',
         servingSummary: '1 wrap',
@@ -197,12 +197,6 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
           carbGrams: 44,
           fatGrams: 24,
           fiberGrams: 4,
-        },
-        diagnostics: {
-          responseId: null,
-          responseStatus: null,
-          structuredOutputFound: true,
-          outputTextPreview: null,
         },
       };
     }
@@ -254,7 +248,7 @@ test('stage 2 stores fresh analysis output for future reuse when no shared match
 
 test('stage 2 keeps generic fallback photo items reviewable instead of renaming them to a guessed food', async () => {
   class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
-    protected override async resolveFreshNutritionWithProvider(_input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0]) {
+    protected override async resolveFreshNutritionWithProvider() {
       return {
         canonicalName: 'Izgara köfte',
         servingSummary: '3 adet',
@@ -267,12 +261,6 @@ test('stage 2 keeps generic fallback photo items reviewable instead of renaming 
           carbGrams: 10,
           fatGrams: 28,
           fiberGrams: 1,
-        },
-        diagnostics: {
-          responseId: null,
-          responseStatus: null,
-          structuredOutputFound: true,
-          outputTextPreview: null,
         },
       };
     }
@@ -739,7 +727,7 @@ test('stage 2 skips shared cache reuse for generic fallback photo items', async 
 
 test('stage 2 does not write shared cache entries for generic fallback photo items', async () => {
   class TestStage2Resolver extends DefaultMealStage2NutritionResolver {
-    protected override async resolveFreshNutritionWithProvider(_input: Parameters<DefaultMealStage2NutritionResolver['resolveFreshNutritionWithProvider']>[0]) {
+    protected override async resolveFreshNutritionWithProvider() {
       return {
         canonicalName: 'Karışık tabak',
         servingSummary: '1 tabak',
@@ -752,12 +740,6 @@ test('stage 2 does not write shared cache entries for generic fallback photo ite
           carbGrams: 52,
           fatGrams: 26,
           fiberGrams: 7,
-        },
-        diagnostics: {
-          responseId: null,
-          responseStatus: null,
-          structuredOutputFound: true,
-          outputTextPreview: null,
         },
       };
     }

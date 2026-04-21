@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import { getDefaultPromptTemplates } from '../services/meal-analysis/prompt-template-service';
 
 const prisma = new PrismaClient();
 
@@ -93,33 +92,6 @@ async function main() {
       where: { slug: food.slug },
       update: food,
       create: food,
-    });
-  }
-
-
-  const defaultPromptTemplates = getDefaultPromptTemplates();
-
-  for (const template of defaultPromptTemplates) {
-    await prisma.promptTemplate.upsert({
-      where: {
-        key_version_locale: {
-          key: template.key,
-          version: template.version,
-          locale: template.locale,
-        },
-      },
-      update: {
-        systemInstructions: template.systemInstructions,
-        userTemplate: template.userTemplate,
-      },
-      create: {
-        key: template.key,
-        version: template.version,
-        locale: template.locale,
-        systemInstructions: template.systemInstructions,
-        userTemplate: template.userTemplate,
-        isActive: true,
-      },
     });
   }
 }

@@ -93,7 +93,7 @@ test('stage 1 does not use generic image filenames as food names', async () => {
 
 test('stage 1 falls back to a single unresolved upload item when image itemization throws', async () => {
   class ThrowingEstimator extends DefaultMealStage1Estimator {
-    protected override async extractImageItems(_input: Parameters<DefaultMealStage1Estimator['extractImageItems']>[0]): Promise<never> {
+    protected override async extractImageItems() {
       throw new Error('The stage 1 image itemizer request failed.');
     }
   }
@@ -179,18 +179,9 @@ test('stage 1 treats hash-like upload names as generic labels', async () => {
 
 test('stage 1 falls back to a single unresolved item when upload analysis cannot run live', async () => {
   class EmptyEstimator extends DefaultMealStage1Estimator {
-    protected override async extractImageItems(_input: Parameters<DefaultMealStage1Estimator['extractImageItems']>[0]) {
+    protected override async extractImageItems() {
       return {
         items: [],
-        diagnostics: {
-          responseId: null,
-          responseStatus: null,
-          structuredOutputFound: false,
-          outputTextPreview: null,
-          rawItemCount: 0,
-          retryTriggered: false,
-          retryUsed: false,
-        },
       };
     }
   }
@@ -223,7 +214,7 @@ test('stage 1 falls back to a single unresolved item when upload analysis cannot
 
 test('stage 1 keeps successful upload and camera itemization behavior identical', async () => {
   class StableEstimator extends DefaultMealStage1Estimator {
-    protected override async extractImageItems(_input: Parameters<DefaultMealStage1Estimator['extractImageItems']>[0]) {
+    protected override async extractImageItems() {
       return {
         items: [
           {
@@ -241,15 +232,6 @@ test('stage 1 keeps successful upload and camera itemization behavior identical'
             reasoning: 'Model detected tas kebabı as a separate item.',
           },
         ],
-        diagnostics: {
-          responseId: null,
-          responseStatus: null,
-          structuredOutputFound: true,
-          outputTextPreview: null,
-          rawItemCount: 2,
-          retryTriggered: false,
-          retryUsed: false,
-        },
       };
     }
   }

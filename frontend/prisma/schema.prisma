@@ -62,13 +62,6 @@ enum ProfileActivityLevel {
   VERY_ACTIVE
 }
 
-enum Role {
-  OWNER
-  ADMIN
-  OPERATOR
-  USER
-}
-
 model AppMeta {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -77,89 +70,24 @@ model AppMeta {
   updatedAt DateTime @updatedAt
 }
 
-model AppSetting {
-  key       String   @id @db.VarChar(191)
-  valueJson Json
-  type      String   @db.VarChar(64)
-  scope     String   @db.VarChar(64)
-  isSecret  Boolean  @default(false)
-  updatedBy String?  @db.VarChar(191)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([scope, type])
-  @@map("app_settings")
-}
-
 /// Core auth user record. All user-owned product data hangs off this model.
 model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
-  role             Role              @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
   profile          UserProfile?
   meals            Meal[]
   mealInputAssets  MealInputAsset[]
-  mealAnalysisRuns      MealAnalysisRun[]
-  createdPromptTemplates PromptTemplate[] @relation("PromptTemplateCreatedBy")
-  updatedPromptTemplates PromptTemplate[] @relation("PromptTemplateUpdatedBy")
-  accounts              Account[]
+  mealAnalysisRuns MealAnalysisRun[]
+  accounts         Account[]
   sessions         Session[]
-  roles            UserRole[]
-  adminAuditLogs   AdminAuditLog[]      @relation("AdminAuditActor")
-  secretRotationAudits SecretRotationAudit[] @relation("SecretRotationActor")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@map("users")
-}
-
-model UserRole {
-  id        String   @id @default(cuid())
-  userId    String
-  role      Role
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, role])
-  @@index([role])
-  @@map("user_roles")
-}
-
-
-model AdminAuditLog {
-  id          String   @id @default(cuid())
-  actorUserId String
-  action      String   @db.VarChar(191)
-  targetType  String   @db.VarChar(191)
-  targetId    String?  @db.VarChar(191)
-  beforeState Json?
-  afterState  Json?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  actorUser   User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
-
-  @@index([actorUserId, createdAt])
-  @@index([action, createdAt])
-  @@map("admin_audit_logs")
-}
-
-model SecretRotationAudit {
-  id          String   @id @default(cuid())
-  secretKey   String   @db.VarChar(191)
-  actorUserId String
-  actorEmail  String   @db.VarChar(191)
-  source      String   @db.VarChar(64)
-  note        String?
-  happenedAt  DateTime @default(now())
-  actorUser   User     @relation("SecretRotationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
-
-  @@index([secretKey, happenedAt])
-  @@index([actorUserId, happenedAt])
-  @@map("secret_rotation_audits")
 }
 
 /// Reserved for auth provider connections so social login can be added later.
@@ -387,26 +315,4 @@ model NutritionCacheEntry {
   @@index([normalizedFoodEntryId])
   @@index([expiresAt])
   @@map("nutrition_cache_entries")
-}
-
-
-model PromptTemplate {
-  id                 String   @id @default(cuid())
-  key                String   @db.VarChar(120)
-  version            String   @db.VarChar(64)
-  locale             String   @db.VarChar(16)
-  systemInstructions String
-  userTemplate       String
-  isActive           Boolean  @default(false)
-  createdBy          String?
-  updatedBy          String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  createdByUser      User?    @relation("PromptTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser      User?    @relation("PromptTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  @@unique([key, version, locale])
-  @@index([key, locale, isActive])
-  @@index([createdAt])
-  @@map("prompt_templates")
 }

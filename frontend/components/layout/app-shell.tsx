@@ -6,7 +6,6 @@ import { MobileAppShell } from '@/components/layout/mobile-app-shell';
 type AppShellProps = {
   children: ReactNode;
   user: {
-    id: string;
     name?: string | null;
     email?: string | null;
   };
