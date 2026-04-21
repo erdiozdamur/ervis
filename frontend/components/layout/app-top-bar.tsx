@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { Icon } from '@/components/ui/icon';
 import { buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { isAdminEmail } from '@/lib/auth/admin';
+import { canAccessAdminPanel } from '@/lib/auth/admin';
 import { formatDateInAppTimeZone } from '@/lib/date/istanbul';
 import { cn } from '@/lib/utils/cn';
 
 type AppTopBarProps = {
   user: {
+    id: string;
     name?: string | null;
     email?: string | null;
   };
@@ -31,11 +32,11 @@ function getDisplayName(name?: string | null, email?: string | null) {
   return name?.trim() || email?.trim() || null;
 }
 
-export function AppTopBar({ user }: AppTopBarProps) {
+export async function AppTopBar({ user }: AppTopBarProps) {
   const now = new Date();
   const displayName = getDisplayName(user.name, user.email);
   const formattedDate = formatDateInAppTimeZone(now);
-  const isAdmin = isAdminEmail(user.email);
+  const isAdmin = await canAccessAdminPanel(user.id);
 
   return (
     <Card tone="hero" className="hairline px-2.5 py-1 sm:px-4 sm:py-3">

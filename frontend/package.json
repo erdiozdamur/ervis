@@ -17,6 +17,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "node ./scripts/migrate-deploy.mjs",
+    "db:bootstrap-owner": "tsx ./scripts/bootstrap-owner.ts",
     "db:push": "prisma db push",
     "db:reset:baseline": "prisma migrate reset --force --skip-generate --skip-seed",
     "db:reset:local": "node ./scripts/local-db-compose.mjs reset",
