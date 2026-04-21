@@ -102,8 +102,10 @@ model User {
   profile          UserProfile?
   meals            Meal[]
   mealInputAssets  MealInputAsset[]
-  mealAnalysisRuns MealAnalysisRun[]
-  accounts         Account[]
+  mealAnalysisRuns      MealAnalysisRun[]
+  createdPromptTemplates PromptTemplate[] @relation("PromptTemplateCreatedBy")
+  updatedPromptTemplates PromptTemplate[] @relation("PromptTemplateUpdatedBy")
+  accounts              Account[]
   sessions         Session[]
   adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditActor")
   createdAt        DateTime          @default(now())
@@ -339,20 +341,24 @@ model NutritionCacheEntry {
   @@map("nutrition_cache_entries")
 }
 
-model AdminAuditLog {
-  id          String   @id @default(cuid())
-  actorUserId String
-  action      String   @db.VarChar(191)
-  targetType  String   @db.VarChar(120)
-  targetId    String?  @db.VarChar(191)
-  beforeState Json?
-  afterState  Json?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  actorUser   User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
 
-  @@index([actorUserId, createdAt])
-  @@index([targetType, targetId, createdAt])
-  @@index([action, createdAt])
-  @@map("admin_audit_logs")
+model PromptTemplate {
+  id                 String   @id @default(cuid())
+  key                String   @db.VarChar(120)
+  version            String   @db.VarChar(64)
+  locale             String   @db.VarChar(16)
+  systemInstructions String
+  userTemplate       String
+  isActive           Boolean  @default(false)
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdByUser      User?    @relation("PromptTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser      User?    @relation("PromptTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([key, version, locale])
+  @@index([key, locale, isActive])
+  @@index([createdAt])
+  @@map("prompt_templates")
 }
