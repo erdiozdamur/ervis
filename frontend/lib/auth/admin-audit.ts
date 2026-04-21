@@ -1,22 +1,20 @@
 import { prisma } from '@/db/prisma';
 import { Prisma } from '@prisma/client';
 
-type AdminAuditJson = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
-
-type AdminAuditJson = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
-
 type AdminAuditInput = {
   actorId: string;
   action: string;
   resourceType: string;
   resourceKey: string;
-  beforeJson?: AdminAuditJson;
-  afterJson?: AdminAuditJson;
+  beforeJson?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
+  afterJson?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
   request: Request;
 };
 
 
-function normalizeAuditJson(value: AdminAuditJson | undefined) {
+function normalizeAuditJson(
+  value: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null | undefined,
+) {
   if (value === null) {
     return Prisma.JsonNull;
   }
