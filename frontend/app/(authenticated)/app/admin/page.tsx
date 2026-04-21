@@ -15,7 +15,7 @@ export default async function AdminPage() {
     <section className="space-y-4">
       <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Admin yetkileri bu sayfadan yönetilecek." />
       <StatePanel
-        tone="info"
+        variant="loading"
         title="Admin modülü hazırlanıyor"
         description="Bu kullanıcıya özel yeni yönetim yetkileri bir sonraki adımda burada açılacak."
       />
