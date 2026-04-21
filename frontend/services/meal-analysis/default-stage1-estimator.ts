@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import { getDefaultMealTitleSuggestion } from '@/lib/meals/draft-title';
 import type { MealAnalysisContext, MealAnalysisStage1Estimator, Stage1ItemFactoryInput } from '@/services/meal-analysis/contracts';
 import { normalizeFoodQuery, parseTextIntoFoodSegments, suggestMealTypeFromConsumedAt } from '@/services/meal-analysis/heuristics';
@@ -199,13 +199,13 @@ function parseStructuredTextItems(input: { textContent: string | null; assetId: 
 
 export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   provider = 'heuristic-stage1';
-  model = getServerEnv().MEAL_ANALYSIS_STAGE1_MODEL;
+  model = 'gpt-4.1-mini';
   protected async extractImageItems(input: Parameters<typeof extractMealItemsFromImageWithOpenAi>[0]) {
     return extractMealItemsFromImageWithOpenAi(input);
   }
 
   protected async analyzeImageAsset(context: MealAnalysisContext, asset: MealAnalysisAssetInput) {
-    const env = getServerEnv();
+    const runtimeConfig = await getRuntimeConfig();
     const warnings: string[] = [];
     let fallbackReason = 'Görsel ayrıştırma sonucu alınamadı.';
     let itemizerDiagnostics:
@@ -222,7 +222,7 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
         }
       | null = null;
 
-    if (!(env.AI_PROVIDER === 'openai' && env.OPENAI_API_KEY && asset.storageKey)) {
+    if (!(runtimeConfig.AI_PROVIDER === 'openai' && runtimeConfig.OPENAI_API_KEY && runtimeConfig.AI_FEATURE_IMAGE_ANALYSIS && asset.storageKey)) {
       fallbackReason = 'Canlı görsel modeli kullanılamadı.';
       return {
         warnings,
@@ -311,6 +311,8 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   }
 
   async estimate(context: MealAnalysisContext) {
+    const runtimeConfig = await getRuntimeConfig();
+    this.model = runtimeConfig.MEAL_ANALYSIS_STAGE1_MODEL;
     const warnings: string[] = [];
     const estimatedItems: MealStage1EstimatedItem[] = [];
     let stage1Diagnostics: {
