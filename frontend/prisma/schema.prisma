@@ -76,18 +76,18 @@ model AppMeta {
   updatedAt DateTime @updatedAt
 }
 
-model SecretRotationAudit {
-  id          String   @id @default(cuid())
-  secretKey   String   @db.VarChar(64)
-  actorUserId String
-  actorEmail  String   @db.VarChar(320)
-  source      String   @db.VarChar(64)
-  note        String?
-  happenedAt  DateTime @default(now())
+model AppSetting {
+  key       String   @id @db.VarChar(191)
+  valueJson Json
+  type      String   @db.VarChar(64)
+  scope     String   @db.VarChar(64)
+  isSecret  Boolean  @default(false)
+  updatedBy String?  @db.VarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([secretKey, happenedAt])
-  @@index([actorUserId, happenedAt])
-  @@map("secret_rotation_audits")
+  @@index([scope, type])
+  @@map("app_settings")
 }
 
 /// Core auth user record. All user-owned product data hangs off this model.
