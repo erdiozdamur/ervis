@@ -69,11 +69,18 @@ enum UserRole {
 }
 
 model AppMeta {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  namespace       String
+  key             String
+  valueJson       Json
+  valueSchemaJson Json
+  version         Int      @default(1)
+  publishedAt     DateTime
+  publishedBy     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([namespace, key])
 }
 
 /// Core auth user record. All user-owned product data hangs off this model.
