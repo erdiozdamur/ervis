@@ -83,6 +83,24 @@ model AppMeta {
   @@unique([namespace, key])
 }
 
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  action       String   @db.VarChar(120)
+  resourceType String   @db.VarChar(120)
+  resourceKey  String   @db.VarChar(255)
+  beforeJson   Json?
+  afterJson    Json?
+  ip           String?  @db.VarChar(128)
+  userAgent    String?  @db.VarChar(512)
+  createdAt    DateTime @default(now())
+  actor        User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, createdAt])
+  @@index([resourceType, resourceKey, createdAt])
+  @@index([createdAt])
+}
+
 /// Core auth user record. All user-owned product data hangs off this model.
 model User {
   id               String            @id @default(cuid())
@@ -98,6 +116,7 @@ model User {
   mealAnalysisRuns MealAnalysisRun[]
   accounts         Account[]
   sessions         Session[]
+  adminAuditLogs   AdminAuditLog[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
