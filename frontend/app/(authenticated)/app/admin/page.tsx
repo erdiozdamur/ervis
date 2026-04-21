@@ -3,6 +3,8 @@ import { StatePanel } from '@/components/ui/state-panel';
 import { requireCurrentUser } from '@/lib/auth/session';
 import { isAdminEmail } from '@/lib/auth/admin';
 import { notFound } from 'next/navigation';
+import { getAnalysisRules } from '@/services/meal-analysis/analysis-rule-repository';
+import { AnalysisRulesEditor } from '@/components/admin/analysis-rules-editor';
 
 export default async function AdminPage() {
   const user = await requireCurrentUser();
@@ -11,14 +13,19 @@ export default async function AdminPage() {
     notFound();
   }
 
+  const ruleSnapshot = await getAnalysisRules();
+
   return (
     <section className="space-y-4">
-      <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Admin yetkileri bu sayfadan yönetilecek." />
-      <StatePanel
-        variant="loading"
-        title="Admin modülü hazırlanıyor"
-        description="Bu kullanıcıya özel yeni yönetim yetkileri bir sonraki adımda burada açılacak."
-      />
+      <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Analiz pipeline ayarları burada yönetilir." />
+      {ruleSnapshot.source === 'default_invalid_stored' ? (
+        <StatePanel
+          variant="warning"
+          title="Kayıtlı kural seti geçersiz"
+          description="Geçersiz JSON prod akışına uygulanmadı; varsayılan kurallar aktif. Lütfen kuralları doğrulayarak yeniden kaydet."
+        />
+      ) : null}
+      <AnalysisRulesEditor initialRules={ruleSnapshot.rules} />
     </section>
   );
 }
