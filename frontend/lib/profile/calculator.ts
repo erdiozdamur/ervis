@@ -5,9 +5,9 @@ import type { ProfileFormInput } from '@/lib/profile/validation';
 
 const activityMultiplierMap: Record<ProfileActivityLevel, { multiplier: number; label: string }> = {
   SEDENTARY: { multiplier: 1.2, label: 'Çoğunlukla masa başı günler' },
-  LIGHT: { multiplier: 1.35, label: 'Hafta içinde hafif aktivite' },
-  MODERATE: { multiplier: 1.5, label: 'Haftalık orta düzey aktivite' },
-  ACTIVE: { multiplier: 1.7, label: 'Haftalık çok aktif rutin' },
+  LIGHT: { multiplier: 1.375, label: 'Hafta içinde hafif aktivite' },
+  MODERATE: { multiplier: 1.55, label: 'Haftalık orta düzey aktivite' },
+  ACTIVE: { multiplier: 1.725, label: 'Haftalık çok aktif rutin' },
   VERY_ACTIVE: { multiplier: 1.9, label: 'Yoğun antrenman veya çok aktif yaşam' },
 };
 
@@ -44,12 +44,19 @@ function calculateBmr(input: ProfileFormInput) {
   return input.sex === 'MALE' ? base + 5 : base - 161;
 }
 
+function getCalorieFloor(input: ProfileFormInput) {
+  if (input.goalType !== 'LOSE_FAT') return 0;
+  return input.sex === 'MALE' ? 1500 : 1200;
+}
+
 export function calculateDailyTargets(input: ProfileFormInput): DailyTargets {
   const bmrCalories = calculateBmr(input);
   const activity = activityMultiplierMap[input.activityLevel];
   const goal = goalAdjustmentMap[input.goalType];
   const maintenanceCalories = bmrCalories * activity.multiplier;
-  const dailyCalories = roundToNearest25(maintenanceCalories * goal.multiplier);
+  const adjustedCalories = maintenanceCalories * goal.multiplier;
+  const calorieFloor = getCalorieFloor(input);
+  const dailyCalories = roundToNearest25(Math.max(adjustedCalories, calorieFloor));
 
   const proteinFactor = getProteinFactor(input.goalType, input.trainingFrequencyPerWeek);
   const proteinGrams = Math.round(input.weightKg * proteinFactor);

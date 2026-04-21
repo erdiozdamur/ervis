@@ -1,7 +1,7 @@
 import type { ProfileActivityLevel, ProfileGoalType, ProfileSex } from '@prisma/client';
 
 export const PROFILE_TIME_ZONE = 'Europe/Istanbul';
-export const PROFILE_CALCULATOR_VERSION = 'mifflin-v1';
+export const PROFILE_CALCULATOR_VERSION = 'mifflin-v2';
 
 export const sexOptions: Array<{ value: ProfileSex; label: string; description: string }> = [
   { value: 'FEMALE', label: 'Kadın', description: 'Sadece tahmini enerji hesabında kullanılır.' },
