@@ -1,5 +1,7 @@
 import { prisma } from '@/db/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+type AdminAuditJson = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
 
 type AdminAuditJson = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
 
