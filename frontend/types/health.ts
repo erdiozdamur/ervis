@@ -9,5 +9,17 @@ export type HealthResponse = {
     databaseConfigured: boolean;
     authSecretConfigured: boolean;
     authUrlConfigured: boolean;
+    managedSecrets: {
+      authSecret: {
+        configured: boolean;
+        source: 'env' | 'secret_manager';
+        lastRotatedAt: string | null;
+      };
+      openAiApiKey: {
+        configured: boolean;
+        source: 'env' | 'secret_manager';
+        lastRotatedAt: string | null;
+      };
+    };
   };
 };
