@@ -1,7 +1,12 @@
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
+import {
+  getActivePromptTemplate,
+  PROMPT_TEMPLATE_KEYS,
+  renderPromptTemplate,
+} from '@/services/meal-analysis/prompt-template-service';
 import type { MealAnalysisAssetInput } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -28,46 +33,7 @@ type OpenAiImageItemizationResult = {
   };
 };
 
-const platterLabelKeywords = [
-  'meze tabağı',
-  'meze tabagi',
-  'karışık türk mezesi tabağı',
-  'karisik turk mezesi tabagi',
-  'karışık meze tabağı',
-  'karisik meze tabagi',
-  'kahvaltı tabağı',
-  'kahvalti tabagi',
-  'karışık tabak',
-  'karisik tabak',
-  'meze plate',
-  'mixed plate',
-  'turkish meze plate',
-  'platter',
-];
-
-type CompositeDishRule = {
-  dishName: string;
-  dishKeywords: string[];
-  componentKeywords: string[];
-};
-
-const compositeDishRules: CompositeDishRule[] = [
-  {
-    dishName: 'Karnıyarık',
-    dishKeywords: ['karnıyarık', 'karniyarik'],
-    componentKeywords: ['patlıcan', 'patlican', 'kıyma', 'kiyma', 'pirinç', 'pirinc', 'domates', 'biber', 'soğan', 'sogan'],
-  },
-  {
-    dishName: 'Musakka',
-    dishKeywords: ['musakka'],
-    componentKeywords: ['patlıcan', 'patlican', 'kıyma', 'kiyma', 'patates', 'domates', 'biber', 'soğan', 'sogan'],
-  },
-  {
-    dishName: 'Mantı',
-    dishKeywords: ['mantı', 'manti'],
-    componentKeywords: ['yoğurt', 'yogurt', 'kıyma', 'kiyma', 'hamur', 'sos'],
-  },
-];
+type Stage1RuleConfig = AnalysisRuleSet['stage1'];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -77,11 +43,11 @@ function normalizeImageItemName(value: string) {
   return value.toLocaleLowerCase('tr-TR').trim();
 }
 
-function inferCompositeDishName(items: Stage1ImageItem[], labelHint: string | null) {
+function inferCompositeDishName(items: Stage1ImageItem[], labelHint: string | null, rules: Stage1RuleConfig) {
   const normalizedLabelHint = labelHint ? normalizeImageItemName(labelHint) : '';
   const normalizedItems = items.map((item) => normalizeImageItemName(item.displayName));
 
-  for (const rule of compositeDishRules) {
+  for (const rule of rules.compositeDishRules.filter((candidate) => candidate.enabled)) {
     const hintMatches = rule.dishKeywords.some((keyword) => normalizedLabelHint.includes(keyword));
     const matchingComponents = normalizedItems.filter((itemName) =>
       rule.componentKeywords.some((keyword) => itemName.includes(keyword)),
@@ -99,12 +65,16 @@ function inferCompositeDishName(items: Stage1ImageItem[], labelHint: string | nu
   return null;
 }
 
-export function applyImageItemizationPostProcessing(items: Stage1ImageItem[], labelHint: string | null): Stage1ImageItem[] {
+export function applyImageItemizationPostProcessing(
+  items: Stage1ImageItem[],
+  labelHint: string | null,
+  rules: Stage1RuleConfig = getDefaultAnalysisRules().stage1,
+): Stage1ImageItem[] {
   if (items.length <= 1) {
     return items;
   }
 
-  const compositeDishName = inferCompositeDishName(items, labelHint);
+  const compositeDishName = inferCompositeDishName(items, labelHint, rules);
   if (!compositeDishName) {
     return items;
   }
@@ -122,9 +92,9 @@ export function applyImageItemizationPostProcessing(items: Stage1ImageItem[], la
   ];
 }
 
-export function looksLikeSeparatedPlatterLabel(displayName: string) {
+export function looksLikeSeparatedPlatterLabel(displayName: string, rules: Stage1RuleConfig = getDefaultAnalysisRules().stage1) {
   const normalized = normalizeImageItemName(displayName);
-  return platterLabelKeywords.some((keyword) => normalized.includes(normalizeImageItemName(keyword)));
+  return rules.platterKeywords.some((keyword) => normalized.includes(normalizeImageItemName(keyword)));
 }
 
 async function requestImageItemization(input: {
@@ -133,15 +103,16 @@ async function requestImageItemization(input: {
     mealType: string;
     consumedAtIso: string;
   };
-  instructions: string[];
+  instructions: string;
+  userPrompt: string;
 }) {
-  const env = getServerEnv();
+  const runtimeConfig = await getRuntimeConfig();
 
-  if (env.AI_PROVIDER !== 'openai') {
+  if (runtimeConfig.AI_PROVIDER !== 'openai' || !runtimeConfig.AI_FEATURE_IMAGE_ANALYSIS) {
     throw new Error('OpenAI stage 1 image itemization is disabled because AI_PROVIDER is not set to openai.');
   }
 
-  if (!env.OPENAI_API_KEY) {
+  if (!runtimeConfig.OPENAI_API_KEY) {
     throw new Error('OpenAI stage 1 image itemization is not configured because OPENAI_API_KEY is missing.');
   }
 
@@ -156,23 +127,19 @@ async function requestImageItemization(input: {
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${runtimeConfig.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: env.MEAL_ANALYSIS_STAGE1_MODEL,
-      instructions: input.instructions.join(' '),
+      instructions: input.instructions,
       input: [
         {
           role: 'user',
           content: [
             {
               type: 'input_text',
-              text: [
-                `Meal type: ${input.mealContext.mealType}`,
-                `Consumed at: ${input.mealContext.consumedAtIso}`,
-                `Asset label hint: ${input.asset.labelHint ?? 'none'}`,
-              ].join('\n'),
+              text: input.userPrompt,
             },
             {
               type: 'input_image',
@@ -318,45 +285,41 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
     consumedAtIso: string;
   };
 }): Promise<OpenAiImageItemizationResult> {
+  const [primaryTemplate, retryTemplate] = await Promise.all([
+    getActivePromptTemplate(PROMPT_TEMPLATE_KEYS.stage1ImageItemizerPrimary),
+    getActivePromptTemplate(PROMPT_TEMPLATE_KEYS.stage1ImageItemizerRetry),
+  ]);
+
+  const primaryPrompt = renderPromptTemplate(primaryTemplate, {
+    mealType: input.mealContext.mealType,
+    consumedAtIso: input.mealContext.consumedAtIso,
+    labelHint: input.asset.labelHint ?? 'none',
+  });
+
   const primaryResult = await requestImageItemization({
     asset: input.asset,
     mealContext: input.mealContext,
-      instructions: [
-        'You are a food-item detector for a Turkish calorie tracking app.',
-        'Identify distinct foods visible in the photo as separate list entries.',
-        'Use Turkish display names.',
-        'Do not include file names, camera labels, or generic placeholders.',
-        'Estimate practical single-person quantities for home/restaurant portions.',
-        'quantityMultiplier must be a serving-scale number (e.g. 1, 0.5, 1.5, 2).',
-        'Split only foods that are physically separate and separately served on the plate.',
-        'Do not split a single mixed dish or cooked combined dish into ingredients.',
-        'If there are clearly visible separate sections on one plate, return multiple items rather than one umbrella plate label.',
-        'If you can see several mezes, side dishes, pastries, desserts, or salad portions on one plate, list each visible section separately.',
-        'Only return zero items when no edible food is visible or the image is too unclear to identify any food at all.',
-        'For example: pilav + tas kebabı + patates kızartması should be separate items.',
-        'For example: kısır + yaprak sarma + Rus salatası + poğaça + tatlı on one plate should be separate items.',
-        'For example: karnıyarık, musakka, mantı, çorba, burger, sandviç should each stay as one item.',
-      ],
+    instructions: primaryPrompt.instructions,
+    userPrompt: primaryPrompt.userPrompt,
   });
 
-  const postProcessedPrimaryItems = applyImageItemizationPostProcessing(primaryResult.items, input.asset.labelHint);
+  const postProcessedPrimaryItems = applyImageItemizationPostProcessing(primaryResult.items, input.asset.labelHint, ruleSnapshot.rules.stage1);
 
   if (postProcessedPrimaryItems.length === 1 && postProcessedPrimaryItems[0] && looksLikeSeparatedPlatterLabel(postProcessedPrimaryItems[0].displayName)) {
+    const retryPrompt = renderPromptTemplate(retryTemplate, {
+      mealType: input.mealContext.mealType,
+      consumedAtIso: input.mealContext.consumedAtIso,
+      labelHint: input.asset.labelHint ?? 'none',
+    });
+
     const retryResult = await requestImageItemization({
       asset: input.asset,
       mealContext: input.mealContext,
-      instructions: [
-        'You are separating a platter into distinct foods for a Turkish calorie tracking app.',
-        'Return separate foods only when they are visibly distinct and separately served on the same plate.',
-        'Do not return one umbrella label such as meze tabağı, karışık tabak, mixed plate, platter, or breakfast plate.',
-        'Name each visible component separately in Turkish.',
-        'If the image shows kısır, yaprak sarma, Rus salatası, börek, tatlı gibi ayrı bölümler, list them as separate items.',
-        'If there are 3 or more clearly distinct food sections, return them separately instead of one combined answer.',
-        'Do not split a single cooked mixed dish into ingredients.',
-      ],
+      instructions: retryPrompt.instructions,
+      userPrompt: retryPrompt.userPrompt,
     });
 
-    const retryItems = applyImageItemizationPostProcessing(retryResult.items, input.asset.labelHint);
+    const retryItems = applyImageItemizationPostProcessing(retryResult.items, input.asset.labelHint, ruleSnapshot.rules.stage1);
     if (retryItems.length > 1) {
       return {
         warning: retryResult.warning,
@@ -378,7 +341,7 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
       retryTriggered:
         postProcessedPrimaryItems.length === 1 &&
         Boolean(postProcessedPrimaryItems[0]) &&
-        looksLikeSeparatedPlatterLabel(postProcessedPrimaryItems[0].displayName),
+        looksLikeSeparatedPlatterLabel(postProcessedPrimaryItems[0].displayName, ruleSnapshot.rules.stage1),
       retryUsed: false,
     },
   };

@@ -1,9 +1,10 @@
 import { prisma } from '@/db/prisma';
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import type { MealAnalysisDependencies, MealAnalysisContext } from '@/services/meal-analysis/contracts';
 import { DefaultMealStage1Estimator } from '@/services/meal-analysis/default-stage1-estimator';
 import { DefaultMealStage2NutritionResolver } from '@/services/meal-analysis/default-stage2-nutrition-resolver';
 import { MealAnalysisError, toMealAnalysisError } from '@/services/meal-analysis/errors';
+import { getMealAnalysisPromptStamp } from '@/services/meal-analysis/prompt-template-service';
 import type {
   MealAnalysisAssetInput,
   MealAnalysisExecutionResult,
@@ -318,6 +319,7 @@ export async function createAndExecuteMealAnalysisRun({
 
   const latestRun = meal.analysisRuns[0];
   const env = getServerEnv();
+  const promptStamp = await getMealAnalysisPromptStamp();
 
   const createdRun = await prisma.mealAnalysisRun.create({
     data: {
@@ -326,7 +328,7 @@ export async function createAndExecuteMealAnalysisRun({
       status: 'QUEUED',
       provider: env.AI_PROVIDER,
       model: env.MEAL_ANALYSIS_STAGE1_MODEL,
-      promptVersion: latestRun?.promptVersion ?? env.AI_ANALYSIS_PROMPT_VERSION,
+      promptVersion: latestRun?.promptVersion ?? promptStamp ?? env.AI_ANALYSIS_PROMPT_VERSION,
       requestFingerprint: latestRun?.requestFingerprint ?? `rerun:${meal.id}:${Date.now()}`,
       requestJson: latestRun?.requestJson ?? {
         contractVersion: 'meal-analysis-request-v1',

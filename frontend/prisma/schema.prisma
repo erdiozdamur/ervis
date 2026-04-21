@@ -77,19 +77,36 @@ model AppMeta {
   updatedAt DateTime @updatedAt
 }
 
+model AppSetting {
+  key       String   @id @db.VarChar(191)
+  valueJson Json
+  type      String   @db.VarChar(64)
+  scope     String   @db.VarChar(64)
+  isSecret  Boolean  @default(false)
+  updatedBy String?  @db.VarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope, type])
+  @@map("app_settings")
+}
+
 /// Core auth user record. All user-owned product data hangs off this model.
 model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
+  role             UserRole          @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
   profile          UserProfile?
   meals            Meal[]
   mealInputAssets  MealInputAsset[]
-  mealAnalysisRuns MealAnalysisRun[]
-  accounts         Account[]
+  mealAnalysisRuns      MealAnalysisRun[]
+  createdPromptTemplates PromptTemplate[] @relation("PromptTemplateCreatedBy")
+  updatedPromptTemplates PromptTemplate[] @relation("PromptTemplateUpdatedBy")
+  accounts              Account[]
   sessions         Session[]
   roles            UserRole[]
   createdAt        DateTime          @default(now())
@@ -335,4 +352,26 @@ model NutritionCacheEntry {
   @@index([normalizedFoodEntryId])
   @@index([expiresAt])
   @@map("nutrition_cache_entries")
+}
+
+
+model PromptTemplate {
+  id                 String   @id @default(cuid())
+  key                String   @db.VarChar(120)
+  version            String   @db.VarChar(64)
+  locale             String   @db.VarChar(16)
+  systemInstructions String
+  userTemplate       String
+  isActive           Boolean  @default(false)
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdByUser      User?    @relation("PromptTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser      User?    @relation("PromptTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([key, version, locale])
+  @@index([key, locale, isActive])
+  @@index([createdAt])
+  @@map("prompt_templates")
 }

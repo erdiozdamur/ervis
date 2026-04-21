@@ -14,6 +14,7 @@ import {
 import { deleteMealAssetFile, writeMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { transcribeMealAudioFile, type AudioTranscriptionResult } from '@/services/meal-analysis/audio-transcription-service';
 import { executeMealAnalysisRun } from '@/services/meal-analysis/meal-analysis-service';
+import { getMealAnalysisPromptStamp } from '@/services/meal-analysis/prompt-template-service';
 import type { MealDraftCreateResult, MealIntakeFieldErrors } from '@/types/meal-intake';
 
 type BinaryAssetInput = {
@@ -280,6 +281,8 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
         });
       }
 
+      const promptStamp = await getMealAnalysisPromptStamp();
+
       const analysisRun = await tx.mealAnalysisRun.create({
         data: {
           mealId: meal.id,
@@ -287,7 +290,7 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
           status: 'QUEUED',
           provider: env.AI_PROVIDER,
           model: env.MEAL_ANALYSIS_STAGE1_MODEL,
-          promptVersion: env.AI_ANALYSIS_PROMPT_VERSION,
+          promptVersion: promptStamp ?? env.AI_ANALYSIS_PROMPT_VERSION,
           requestFingerprint,
           requestJson,
         },
