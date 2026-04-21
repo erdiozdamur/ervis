@@ -62,6 +62,12 @@ enum ProfileActivityLevel {
   VERY_ACTIVE
 }
 
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
 model AppMeta {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -75,6 +81,7 @@ model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
+  role             UserRole          @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
