@@ -8,6 +8,7 @@ import os
 import secrets
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -265,6 +266,76 @@ class LoginRequest(BaseModel):
         return value
 
 
+class PromptDraftRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    promptId: str | None = Field(default=None, min_length=4, max_length=120)
+    content: str = Field(min_length=1, max_length=8000)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class PromptActionRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    draftId: str = Field(min_length=4, max_length=120)
+
+
+class PromptDryRunRequest(PromptActionRequest):
+    sampleInput: str = Field(min_length=1, max_length=4000)
+
+
+class PromptRollbackRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    targetVersion: int | None = Field(default=None, ge=1)
+
+
+PROMPT_STORE: dict[str, dict[str, Any]] = {}
+
+
+def utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def ensure_prompt(prompt_id: str) -> dict[str, Any]:
+    prompt = PROMPT_STORE.get(prompt_id)
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Prompt not found.", "promptId": prompt_id},
+        )
+    return prompt
+
+
+def ensure_prompt_draft(prompt: dict[str, Any], draft_id: str) -> dict[str, Any]:
+    draft = prompt["drafts"].get(draft_id)
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Draft not found for prompt.", "draftId": draft_id, "promptId": prompt["id"]},
+        )
+    return draft
+
+
+def summarize_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "promptId": prompt["id"],
+        "title": prompt.get("title"),
+        "status": prompt["status"],
+        "publishedVersion": prompt.get("publishedVersion"),
+        "updatedAt": prompt["updatedAt"],
+    }
+
+
+def draft_validation_errors(content: str) -> list[str]:
+    errors: list[str] = []
+    if "{{input}}" not in content:
+        errors.append("Prompt content must include the '{{input}}' placeholder.")
+    if len(content) < 10:
+        errors.append("Prompt content should be at least 10 characters.")
+    return errors
+
+
 app = FastAPI(title="Ervis Local Backend", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -473,3 +544,164 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         )
 
     return {"ok": True, "user": build_user_payload(user_row)}
+
+
+@app.post("/api/prompts/draft")
+def create_prompt_draft(payload: PromptDraftRequest) -> dict[str, Any]:
+    prompt_id = payload.promptId or f"prm_{secrets.token_hex(8)}"
+    prompt = PROMPT_STORE.get(prompt_id)
+    now = utcnow_iso()
+
+    if not prompt:
+        prompt = {
+            "id": prompt_id,
+            "title": payload.title,
+            "status": "draft",
+            "publishedVersion": None,
+            "publishedContent": None,
+            "publishedAt": None,
+            "drafts": {},
+            "history": [],
+            "updatedAt": now,
+        }
+        PROMPT_STORE[prompt_id] = prompt
+    elif payload.title:
+        prompt["title"] = payload.title
+
+    draft_id = f"drf_{secrets.token_hex(8)}"
+    prompt["drafts"][draft_id] = {
+        "id": draft_id,
+        "content": payload.content,
+        "createdAt": now,
+        "validation": {"isValid": False, "errors": ["Draft has not been validated yet."]},
+        "dryRun": {"passed": False, "sampleInput": None, "output": None, "executedAt": None},
+    }
+    prompt["updatedAt"] = now
+
+    return {"ok": True, "prompt": summarize_prompt(prompt), "draftId": draft_id}
+
+
+@app.post("/api/prompts/{prompt_id}/validate")
+def validate_prompt_draft(prompt_id: str, payload: PromptActionRequest) -> dict[str, Any]:
+    prompt = ensure_prompt(prompt_id)
+    draft = ensure_prompt_draft(prompt, payload.draftId)
+
+    errors = draft_validation_errors(draft["content"])
+    is_valid = not errors
+    draft["validation"] = {"isValid": is_valid, "errors": errors}
+    draft["validatedAt"] = utcnow_iso()
+    prompt["updatedAt"] = draft["validatedAt"]
+
+    return {
+        "ok": True,
+        "prompt": summarize_prompt(prompt),
+        "draftId": draft["id"],
+        "validation": draft["validation"],
+    }
+
+
+@app.post("/api/prompts/{prompt_id}/dry-run")
+def dry_run_prompt(prompt_id: str, payload: PromptDryRunRequest) -> dict[str, Any]:
+    prompt = ensure_prompt(prompt_id)
+    draft = ensure_prompt_draft(prompt, payload.draftId)
+
+    rendered_output = draft["content"].replace("{{input}}", payload.sampleInput)
+    passed = "{{input}}" in draft["content"] and len(rendered_output.strip()) > 0
+    dry_run_result = {
+        "passed": passed,
+        "sampleInput": payload.sampleInput,
+        "output": rendered_output,
+        "executedAt": utcnow_iso(),
+    }
+    draft["dryRun"] = dry_run_result
+    prompt["updatedAt"] = dry_run_result["executedAt"]
+
+    return {"ok": True, "prompt": summarize_prompt(prompt), "draftId": draft["id"], "dryRun": dry_run_result}
+
+
+@app.post("/api/prompts/{prompt_id}/publish")
+def publish_prompt(prompt_id: str, payload: PromptActionRequest) -> dict[str, Any]:
+    prompt = ensure_prompt(prompt_id)
+    draft = ensure_prompt_draft(prompt, payload.draftId)
+    validation = draft.get("validation", {})
+    dry_run = draft.get("dryRun", {})
+
+    if not validation.get("isValid"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "Draft must pass validation before publish.", "draftId": payload.draftId},
+        )
+
+    if not dry_run.get("passed"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "Dry-run test must pass before publish.", "draftId": payload.draftId},
+        )
+
+    if prompt.get("publishedVersion"):
+        prompt["history"].append(
+            {
+                "version": prompt["publishedVersion"],
+                "content": prompt["publishedContent"],
+                "publishedAt": prompt["publishedAt"],
+            }
+        )
+
+    next_version = (prompt.get("publishedVersion") or 0) + 1
+    now = utcnow_iso()
+    prompt["publishedVersion"] = next_version
+    prompt["publishedContent"] = draft["content"]
+    prompt["publishedAt"] = now
+    prompt["status"] = "published"
+    prompt["updatedAt"] = now
+
+    return {
+        "ok": True,
+        "prompt": summarize_prompt(prompt),
+        "published": {
+            "version": prompt["publishedVersion"],
+            "publishedAt": prompt["publishedAt"],
+            "content": prompt["publishedContent"],
+        },
+    }
+
+
+@app.post("/api/prompts/{prompt_id}/rollback")
+def rollback_prompt(prompt_id: str, payload: PromptRollbackRequest) -> dict[str, Any]:
+    prompt = ensure_prompt(prompt_id)
+    history = prompt.get("history", [])
+
+    if payload.targetVersion is not None:
+        history_item = next((item for item in reversed(history) if item["version"] == payload.targetVersion), None)
+        if not history_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Requested targetVersion not found in prompt history."},
+            )
+    else:
+        history_item = history[-1] if history else None
+
+    if not history_item:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "No published history exists to rollback."},
+        )
+
+    now = utcnow_iso()
+    prompt["publishedVersion"] = history_item["version"]
+    prompt["publishedContent"] = history_item["content"]
+    prompt["publishedAt"] = now
+    prompt["status"] = "published"
+    prompt["updatedAt"] = now
+
+    prompt["history"] = [item for item in history if item["version"] < history_item["version"]]
+
+    return {
+        "ok": True,
+        "prompt": summarize_prompt(prompt),
+        "rolledBackTo": {
+            "version": prompt["publishedVersion"],
+            "publishedAt": prompt["publishedAt"],
+            "content": prompt["publishedContent"],
+        },
+    }
