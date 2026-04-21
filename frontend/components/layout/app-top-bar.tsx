@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Icon } from '@/components/ui/icon';
 import { buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { isAdminEmail } from '@/lib/auth/admin';
+import { isAdminRole } from '@/lib/auth/admin';
 import { formatDateInAppTimeZone } from '@/lib/date/istanbul';
 import { cn } from '@/lib/utils/cn';
 
@@ -10,6 +10,7 @@ type AppTopBarProps = {
   user: {
     name?: string | null;
     email?: string | null;
+    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | null;
   };
 };
 
@@ -35,7 +36,7 @@ export function AppTopBar({ user }: AppTopBarProps) {
   const now = new Date();
   const displayName = getDisplayName(user.name, user.email);
   const formattedDate = formatDateInAppTimeZone(now);
-  const isAdmin = isAdminEmail(user.email);
+  const isAdmin = isAdminRole(user.role);
 
   return (
     <Card tone="hero" className="hairline px-2.5 py-1 sm:px-4 sm:py-3">

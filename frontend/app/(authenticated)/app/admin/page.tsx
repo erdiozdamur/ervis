@@ -1,13 +1,13 @@
 import { ScreenHeader } from '@/components/layout/screen-header';
 import { StatePanel } from '@/components/ui/state-panel';
 import { requireCurrentUser } from '@/lib/auth/session';
-import { isAdminEmail } from '@/lib/auth/admin';
+import { isAdminRole } from '@/lib/auth/admin';
 import { notFound } from 'next/navigation';
 
 export default async function AdminPage() {
   const user = await requireCurrentUser();
 
-  if (!isAdminEmail(user.email)) {
+  if (!isAdminRole(user.role)) {
     notFound();
   }
 

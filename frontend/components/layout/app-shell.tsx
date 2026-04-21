@@ -8,6 +8,7 @@ type AppShellProps = {
   user: {
     name?: string | null;
     email?: string | null;
+    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | null;
   };
   needsProfileCompletion?: boolean;
 };

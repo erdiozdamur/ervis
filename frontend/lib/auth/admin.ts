@@ -1,9 +1,9 @@
-const ADMIN_EMAILS = new Set(['e.ozdamur@gmail.com']);
+import type { UserRole } from '@prisma/client';
 
-export function isAdminEmail(email?: string | null) {
-  if (!email) {
+export function isAdminRole(role?: UserRole | null) {
+  if (!role) {
     return false;
   }
 
-  return ADMIN_EMAILS.has(email.trim().toLowerCase());
+  return role === 'ADMIN' || role === 'SUPER_ADMIN';
 }

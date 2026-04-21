@@ -1,6 +1,7 @@
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import type { UserRole } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 import { AUTH_SIGN_IN_PATH } from '@/lib/auth/constants';
 import { getServerEnv } from '@/lib/env';
@@ -43,7 +44,9 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         const emailVerified =
           'emailVerified' in user && user.emailVerified instanceof Date ? user.emailVerified.toISOString() : null;
+        const role = 'role' in user && typeof user.role === 'string' ? (user.role as UserRole) : 'USER';
         token.emailVerified = emailVerified;
+        token.role = role;
       }
 
       return token;
@@ -52,6 +55,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.sub ?? session.user.id;
         session.user.emailVerified = typeof token.emailVerified === 'string' ? token.emailVerified : null;
+        session.user.role = token.role ?? 'USER';
       }
 
       return session;
