@@ -11,4 +11,6 @@ test('health endpoint returns 200 and status ok', async () => {
   assert.equal(payload.timeZone, 'Europe/Istanbul');
   assert.equal(typeof payload.timestamp, 'string');
   assert.equal(typeof payload.dayKey, 'string');
+  assert.equal(typeof payload.checks.managedSecrets.authSecret.configured, 'boolean');
+  assert.equal(typeof payload.checks.managedSecrets.openAiApiKey.configured, 'boolean');
 });

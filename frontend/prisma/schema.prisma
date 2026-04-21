@@ -62,6 +62,12 @@ enum ProfileActivityLevel {
   VERY_ACTIVE
 }
 
+enum UserRole {
+  USER
+  ADMIN
+  OWNER
+}
+
 model AppMeta {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -89,6 +95,7 @@ model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
+  role             UserRole          @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
@@ -98,6 +105,7 @@ model User {
   mealAnalysisRuns MealAnalysisRun[]
   accounts         Account[]
   sessions         Session[]
+  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditActor")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -329,4 +337,22 @@ model NutritionCacheEntry {
   @@index([normalizedFoodEntryId])
   @@index([expiresAt])
   @@map("nutrition_cache_entries")
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String   @db.VarChar(191)
+  targetType  String   @db.VarChar(120)
+  targetId    String?  @db.VarChar(191)
+  beforeState Json?
+  afterState  Json?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actorUser   User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([action, createdAt])
+  @@map("admin_audit_logs")
 }

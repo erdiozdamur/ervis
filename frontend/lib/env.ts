@@ -47,6 +47,16 @@ export type RuntimeEnvCheck = {
   databaseConfigured: boolean;
   authSecretConfigured: boolean;
   authUrlConfigured: boolean;
+  managedSecrets: {
+    authSecret: {
+      configured: boolean;
+      source: 'env';
+    };
+    openAiApiKey: {
+      configured: boolean;
+      source: 'env';
+    };
+  };
 };
 
 let cachedEnv: ServerEnv | null = null;
@@ -115,5 +125,15 @@ export function getRuntimeEnvChecks(): RuntimeEnvCheck {
     databaseConfigured: Boolean(env.DATABASE_URL),
     authSecretConfigured: Boolean(env.AUTH_SECRET),
     authUrlConfigured: Boolean(env.NEXTAUTH_URL || env.NEXT_PUBLIC_APP_URL),
+    managedSecrets: {
+      authSecret: {
+        configured: Boolean(env.AUTH_SECRET),
+        source: 'env',
+      },
+      openAiApiKey: {
+        configured: Boolean(env.OPENAI_API_KEY),
+        source: 'env',
+      },
+    },
   };
 }
