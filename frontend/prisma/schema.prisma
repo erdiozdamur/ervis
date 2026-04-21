@@ -96,7 +96,7 @@ model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
-  role             UserRole          @default(USER)
+  role             Role              @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
@@ -109,6 +109,8 @@ model User {
   accounts              Account[]
   sessions         Session[]
   roles            UserRole[]
+  adminAuditLogs   AdminAuditLog[]      @relation("AdminAuditActor")
+  secretRotationAudits SecretRotationAudit[] @relation("SecretRotationActor")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -125,6 +127,39 @@ model UserRole {
   @@unique([userId, role])
   @@index([role])
   @@map("user_roles")
+}
+
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String   @db.VarChar(191)
+  targetType  String   @db.VarChar(191)
+  targetId    String?  @db.VarChar(191)
+  beforeState Json?
+  afterState  Json?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actorUser   User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("admin_audit_logs")
+}
+
+model SecretRotationAudit {
+  id          String   @id @default(cuid())
+  secretKey   String   @db.VarChar(191)
+  actorUserId String
+  actorEmail  String   @db.VarChar(191)
+  source      String   @db.VarChar(64)
+  note        String?
+  happenedAt  DateTime @default(now())
+  actorUser   User     @relation("SecretRotationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([secretKey, happenedAt])
+  @@index([actorUserId, happenedAt])
+  @@map("secret_rotation_audits")
 }
 
 /// Reserved for auth provider connections so social login can be added later.
