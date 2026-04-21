@@ -6,8 +6,8 @@ type AdminAuditInput = {
   action: string;
   resourceType: string;
   resourceKey: string;
-  beforeJson?: Prisma.InputJsonValue | Prisma.JsonNull | null;
-  afterJson?: Prisma.InputJsonValue | Prisma.JsonNull | null;
+  beforeJson?: Prisma.InputJsonValue | typeof Prisma.JsonNull | null;
+  afterJson?: Prisma.InputJsonValue | typeof Prisma.JsonNull | null;
   request: Request;
 };
 
