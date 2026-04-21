@@ -1,24 +1,79 @@
-import { ScreenHeader } from '@/components/layout/screen-header';
-import { StatePanel } from '@/components/ui/state-panel';
-import { requireCurrentUser } from '@/lib/auth/session';
-import { isAdminRole } from '@/lib/auth/admin';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ScreenHeader } from '@/components/layout/screen-header';
+import { Stack } from '@/components/layout/stack';
+import { Button } from '@/components/ui/button';
+import { StatePanel } from '@/components/ui/state-panel';
+import { isAdminRole } from '@/lib/auth/admin';
+import { requireCurrentUser } from '@/lib/auth/session';
+import { cn } from '@/lib/utils/cn';
 
-export default async function AdminPage() {
+const ADMIN_TABS = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'users', label: 'Users' },
+  { key: 'ai-settings', label: 'AI Settings' },
+  { key: 'prompt-studio', label: 'Prompt Studio' },
+  { key: 'app-settings', label: 'App Settings' },
+  { key: 'audit-logs', label: 'Audit Logs' },
+] as const;
+
+type AdminTabKey = (typeof ADMIN_TABS)[number]['key'];
+
+type AdminPageProps = {
+  searchParams?: {
+    tab?: string;
+  };
+};
+
+function toAdminTab(value: string | undefined): AdminTabKey {
+  if (!value) {
+    return 'dashboard';
+  }
+
+  const matchedTab = ADMIN_TABS.find((tab) => tab.key === value);
+  return matchedTab?.key ?? 'dashboard';
+}
+
+export default async function AdminPage({ searchParams }: AdminPageProps) {
   const user = await requireCurrentUser();
 
   if (!isAdminRole(user.role)) {
     notFound();
   }
 
+  const selectedTab = toAdminTab(searchParams?.tab);
+  const selectedLabel = ADMIN_TABS.find((tab) => tab.key === selectedTab)?.label ?? 'Dashboard';
+
   return (
-    <section className="space-y-4">
-      <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Admin yetkileri bu sayfadan yönetilecek." />
-      <StatePanel
-        variant="loading"
-        title="Admin modülü hazırlanıyor"
-        description="Bu kullanıcıya özel yeni yönetim yetkileri bir sonraki adımda burada açılacak."
+    <Stack gap="lg">
+      <ScreenHeader
+        eyebrow="Admin"
+        title="Admin Panel"
+        description="Manage admin capabilities from one tabbed workspace and keep all admin modules consistent."
       />
-    </section>
+
+      <nav aria-label="Admin sections" className="flex flex-wrap gap-2">
+        {ADMIN_TABS.map((tab) => {
+          const isActive = tab.key === selectedTab;
+          return (
+            <Button
+              key={tab.key}
+              asChild
+              variant={isActive ? 'primary' : 'secondary'}
+              size="sm"
+              className={cn('rounded-full', isActive ? undefined : 'text-slate-600')}
+            >
+              <Link href={`/app/admin?tab=${tab.key}`}>{tab.label}</Link>
+            </Button>
+          );
+        })}
+      </nav>
+
+      <StatePanel
+        variant="empty"
+        title={`${selectedLabel} is ready for implementation`}
+        description="This tab is scaffolded. Empty, loading, and error states now follow one shared admin pattern until live data flows are added."
+      />
+    </Stack>
   );
 }
