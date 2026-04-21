@@ -1,15 +1,26 @@
 import { prisma } from '@/db/prisma';
 import type { Prisma } from '@prisma/client';
 
+type AdminAuditJson = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | null;
+
 type AdminAuditInput = {
   actorId: string;
   action: string;
   resourceType: string;
   resourceKey: string;
-  beforeJson?: Prisma.InputJsonValue | Prisma.JsonNull | null;
-  afterJson?: Prisma.InputJsonValue | Prisma.JsonNull | null;
+  beforeJson?: AdminAuditJson;
+  afterJson?: AdminAuditJson;
   request: Request;
 };
+
+
+function normalizeAuditJson(value: AdminAuditJson | undefined) {
+  if (value === null) {
+    return Prisma.JsonNull;
+  }
+
+  return value;
+}
 
 function extractIp(request: Request): string | null {
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -39,8 +50,8 @@ export async function createAdminAuditLog(input: AdminAuditInput) {
       action: input.action,
       resourceType: input.resourceType,
       resourceKey: input.resourceKey,
-      beforeJson: input.beforeJson,
-      afterJson: input.afterJson,
+      beforeJson: normalizeAuditJson(input.beforeJson),
+      afterJson: normalizeAuditJson(input.afterJson),
       ip,
       userAgent,
     },
