@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { requireAdminApiAccess } from '@/lib/auth/admin';
 import { writeAdminAuditLog } from '@/lib/admin-audit';
@@ -10,7 +10,7 @@ export async function GET() {
     return auth.response;
   }
 
-  return NextResponse.json({ ok: true, roles: Object.values(UserRole) });
+  return NextResponse.json({ ok: true, roles: Object.values(Role) });
 }
 
 export async function PUT(request: Request) {
@@ -20,7 +20,7 @@ export async function PUT(request: Request) {
     return auth.response;
   }
 
-  const body = (await request.json().catch(() => null)) as { roles?: UserRole[] } | null;
+  const body = (await request.json().catch(() => null)) as { roles?: Role[] } | null;
 
   if (!body?.roles?.length) {
     return NextResponse.json({ message: 'En az bir rol gönderilmelidir.' }, { status: 400 });

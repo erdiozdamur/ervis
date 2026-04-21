@@ -192,7 +192,7 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
     return extractMealItemsFromImageWithOpenAi(input);
   }
 
-  protected async analyzeImageAsset(context: MealAnalysisContext, asset: MealAnalysisAssetInput) {
+  protected async analyzeImageAsset(context: MealAnalysisContext, asset: MealAnalysisAssetInput, genericImageNamePrefixes: string[]) {
     const runtimeConfig = await getRuntimeConfig();
     const warnings: string[] = [];
     let fallbackReason = 'Görsel ayrıştırma sonucu alınamadı.';
@@ -303,6 +303,10 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
     this.model = runtimeConfig.MEAL_ANALYSIS_STAGE1_MODEL;
     const warnings: string[] = [];
     const estimatedItems: MealStage1EstimatedItem[] = [];
+    const { rules } = await getAnalysisRules();
+    const genericImageNamePrefixes = rules.stage1.genericImageNamePrefixes
+      .map((prefix) => normalizeGenericFileNameToken(prefix))
+      .filter((prefix) => prefix.length > 0);
     let stage1Diagnostics: {
       itemizer: {
         responseId: string | null;

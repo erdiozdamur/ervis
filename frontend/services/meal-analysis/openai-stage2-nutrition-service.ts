@@ -255,7 +255,7 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: env.MEAL_ANALYSIS_STAGE2_MODEL,
+      model: runtimeConfig.MEAL_ANALYSIS_STAGE2_MODEL,
       instructions: promptTemplate.systemInstructions,
       input: [
         {

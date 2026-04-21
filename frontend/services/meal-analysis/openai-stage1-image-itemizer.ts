@@ -1,6 +1,8 @@
 import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
+import { getAnalysisRules, getDefaultAnalysisRules } from '@/services/meal-analysis/analysis-rule-repository';
+import type { AnalysisRuleSet } from '@/lib/analysis-rules/schema';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
 import {
   getActivePromptTemplate,
@@ -131,7 +133,7 @@ async function requestImageItemization(input: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: env.MEAL_ANALYSIS_STAGE1_MODEL,
+      model: runtimeConfig.MEAL_ANALYSIS_STAGE1_MODEL,
       instructions: input.instructions,
       input: [
         {
@@ -285,6 +287,7 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
     consumedAtIso: string;
   };
 }): Promise<OpenAiImageItemizationResult> {
+  const ruleSnapshot = await getAnalysisRules();
   const [primaryTemplate, retryTemplate] = await Promise.all([
     getActivePromptTemplate(PROMPT_TEMPLATE_KEYS.stage1ImageItemizerPrimary),
     getActivePromptTemplate(PROMPT_TEMPLATE_KEYS.stage1ImageItemizerRetry),
