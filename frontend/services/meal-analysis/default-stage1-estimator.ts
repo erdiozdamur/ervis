@@ -1,30 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import { getDefaultMealTitleSuggestion } from '@/lib/meals/draft-title';
+import { getAnalysisRules } from '@/services/meal-analysis/analysis-rule-repository';
 import type { MealAnalysisContext, MealAnalysisStage1Estimator, Stage1ItemFactoryInput } from '@/services/meal-analysis/contracts';
 import { normalizeFoodQuery, parseTextIntoFoodSegments, suggestMealTypeFromConsumedAt } from '@/services/meal-analysis/heuristics';
 import { extractMealItemsFromImageWithOpenAi } from '@/services/meal-analysis/openai-stage1-image-itemizer';
 import type { MealStage1EstimatedItem } from '@/types/meal-analysis';
 import type { MealAnalysisAssetInput } from '@/types/meal-analysis';
 
-const genericImageNamePrefixes = [
-  'img',
-  'image',
-  'images',
-  'photo',
-  'camera',
-  'screenshot',
-  'ekran resmi',
-  'whatsapp image',
-  'dsc',
-  'pxl',
-].map((value) => value.toLowerCase().replace(/[_-]+/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().replace(/\s+/g, ''));
-
 function normalizeGenericFileNameToken(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().replace(/\s+/g, '');
 }
 
-function isGenericImageNameToken(compactValue: string) {
+function isGenericImageNameToken(compactValue: string, prefixes: string[]) {
   if (/^[a-z][a-f0-9]{16,}$/i.test(compactValue) || /^[a-z]-[a-f0-9]{16,}$/i.test(compactValue)) {
     return true;
   }
@@ -33,7 +21,7 @@ function isGenericImageNameToken(compactValue: string) {
     return true;
   }
 
-  return genericImageNamePrefixes.some((prefix) => {
+  return prefixes.some((prefix) => {
     if (!compactValue.startsWith(prefix)) {
       return false;
     }
@@ -61,7 +49,7 @@ function createEstimatedItem(input: Stage1ItemFactoryInput): MealStage1Estimated
   };
 }
 
-function looksLikeGenericFileName(labelHint: string) {
+function looksLikeGenericFileName(labelHint: string, prefixes: string[]) {
   const normalized = normalizeFoodQuery(labelHint);
   const compactNormalized = normalizeGenericFileNameToken(labelHint);
 
@@ -76,16 +64,16 @@ function looksLikeGenericFileName(labelHint: string) {
       .trim();
     const compactBase = normalizeGenericFileNameToken(basename);
 
-    if (isGenericImageNameToken(compactBase)) {
+    if (isGenericImageNameToken(compactBase, prefixes)) {
       return true;
     }
   }
 
-  return isGenericImageNameToken(compactNormalized);
+  return isGenericImageNameToken(compactNormalized, prefixes);
 }
 
-function getImageLabelSegment(labelHint: string | null) {
-  if (!labelHint || looksLikeGenericFileName(labelHint)) {
+function getImageLabelSegment(labelHint: string | null, prefixes: string[]) {
+  if (!labelHint || looksLikeGenericFileName(labelHint, prefixes)) {
     return null;
   }
 
@@ -94,7 +82,7 @@ function getImageLabelSegment(labelHint: string | null) {
     return null;
   }
 
-  if (looksLikeGenericFileName(segment.displayName)) {
+  if (looksLikeGenericFileName(segment.displayName, prefixes)) {
     return null;
   }
 
@@ -143,8 +131,8 @@ function getImageFallbackPortionLabel(context: MealAnalysisContext, labelHint: s
   };
 }
 
-function getImageFallbackDisplayName(labelHint: string | null) {
-  const labelSegment = getImageLabelSegment(labelHint);
+function getImageFallbackDisplayName(labelHint: string | null, prefixes: string[]) {
+  const labelSegment = getImageLabelSegment(labelHint, prefixes);
   if (labelSegment) {
     return labelSegment;
   }
@@ -199,13 +187,13 @@ function parseStructuredTextItems(input: { textContent: string | null; assetId: 
 
 export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   provider = 'heuristic-stage1';
-  model = getServerEnv().MEAL_ANALYSIS_STAGE1_MODEL;
+  model = 'gpt-4.1-mini';
   protected async extractImageItems(input: Parameters<typeof extractMealItemsFromImageWithOpenAi>[0]) {
     return extractMealItemsFromImageWithOpenAi(input);
   }
 
   protected async analyzeImageAsset(context: MealAnalysisContext, asset: MealAnalysisAssetInput) {
-    const env = getServerEnv();
+    const runtimeConfig = await getRuntimeConfig();
     const warnings: string[] = [];
     let fallbackReason = 'Görsel ayrıştırma sonucu alınamadı.';
     let itemizerDiagnostics:
@@ -222,12 +210,12 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
         }
       | null = null;
 
-    if (!(env.AI_PROVIDER === 'openai' && env.OPENAI_API_KEY && asset.storageKey)) {
+    if (!(runtimeConfig.AI_PROVIDER === 'openai' && runtimeConfig.OPENAI_API_KEY && runtimeConfig.AI_FEATURE_IMAGE_ANALYSIS && asset.storageKey)) {
       fallbackReason = 'Canlı görsel modeli kullanılamadı.';
       return {
         warnings,
         diagnostics: itemizerDiagnostics,
-        estimatedItems: this.createFallbackImageItems(context, asset, fallbackReason),
+        estimatedItems: this.createFallbackImageItems(context, asset, fallbackReason, genericImageNamePrefixes),
       };
     }
 
@@ -288,13 +276,13 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
           retryUsed: false,
           fallbackReason,
         },
-      estimatedItems: this.createFallbackImageItems(context, asset, fallbackReason),
+      estimatedItems: this.createFallbackImageItems(context, asset, fallbackReason, genericImageNamePrefixes),
     };
   }
 
-  protected createFallbackImageItems(context: MealAnalysisContext, asset: MealAnalysisAssetInput, fallbackReason: string) {
+  protected createFallbackImageItems(context: MealAnalysisContext, asset: MealAnalysisAssetInput, fallbackReason: string, genericImageNamePrefixes: string[]) {
     const portionEstimate = getImageFallbackPortionLabel(context, asset.labelHint);
-    const fallbackDisplay = getImageFallbackDisplayName(asset.labelHint);
+    const fallbackDisplay = getImageFallbackDisplayName(asset.labelHint, genericImageNamePrefixes);
 
     return [
       createEstimatedItem({
@@ -311,6 +299,8 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   }
 
   async estimate(context: MealAnalysisContext) {
+    const runtimeConfig = await getRuntimeConfig();
+    this.model = runtimeConfig.MEAL_ANALYSIS_STAGE1_MODEL;
     const warnings: string[] = [];
     const estimatedItems: MealStage1EstimatedItem[] = [];
     let stage1Diagnostics: {
@@ -352,7 +342,7 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
 
       if (asset.assetType === 'IMAGE') {
         warnings.push('Fotoğraf analizi tahminleri kaydetmeden önce kontrol edilmelidir.');
-        const imageAnalysis = await this.analyzeImageAsset(context, asset);
+        const imageAnalysis = await this.analyzeImageAsset(context, asset, genericImageNamePrefixes);
         warnings.push(...imageAnalysis.warnings);
         estimatedItems.push(...imageAnalysis.estimatedItems);
         if (imageAnalysis.diagnostics) {

@@ -1,5 +1,5 @@
 import { prisma } from '@/db/prisma';
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import type { MealAnalysisDependencies, MealAnalysisContext } from '@/services/meal-analysis/contracts';
 import { DefaultMealStage1Estimator } from '@/services/meal-analysis/default-stage1-estimator';
 import { DefaultMealStage2NutritionResolver } from '@/services/meal-analysis/default-stage2-nutrition-resolver';

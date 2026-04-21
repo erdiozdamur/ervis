@@ -62,6 +62,12 @@ enum ProfileActivityLevel {
   VERY_ACTIVE
 }
 
+enum UserRole {
+  USER
+  ADMIN
+  OWNER
+}
+
 model AppMeta {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -70,11 +76,26 @@ model AppMeta {
   updatedAt DateTime @updatedAt
 }
 
+model AppSetting {
+  key       String   @id @db.VarChar(191)
+  valueJson Json
+  type      String   @db.VarChar(64)
+  scope     String   @db.VarChar(64)
+  isSecret  Boolean  @default(false)
+  updatedBy String?  @db.VarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope, type])
+  @@map("app_settings")
+}
+
 /// Core auth user record. All user-owned product data hangs off this model.
 model User {
   id               String            @id @default(cuid())
   name             String?
   email            String            @unique
+  role             UserRole          @default(USER)
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
@@ -86,6 +107,7 @@ model User {
   updatedPromptTemplates PromptTemplate[] @relation("PromptTemplateUpdatedBy")
   accounts              Account[]
   sessions         Session[]
+  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditActor")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 

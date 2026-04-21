@@ -1,4 +1,4 @@
-import { getServerEnv } from '@/lib/env';
+import { getRuntimeConfig } from '@/services/config/runtime-config-service';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
@@ -227,13 +227,13 @@ async function buildImageContentParts(sourceAssets: MealAnalysisAssetInput[]) {
 }
 
 export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): Promise<OpenAiResolvedNutrition> {
-  const env = getServerEnv();
+  const runtimeConfig = await getRuntimeConfig();
 
-  if (env.AI_PROVIDER !== 'openai') {
+  if (runtimeConfig.AI_PROVIDER !== 'openai' || !runtimeConfig.AI_FEATURE_IMAGE_ANALYSIS) {
     throw new Error('OpenAI nutrition resolution is disabled because AI_PROVIDER is not set to openai.');
   }
 
-  if (!env.OPENAI_API_KEY) {
+  if (!runtimeConfig.OPENAI_API_KEY) {
     throw new Error('OpenAI nutrition resolution is not configured because OPENAI_API_KEY is missing.');
   }
 
@@ -251,7 +251,7 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${runtimeConfig.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
