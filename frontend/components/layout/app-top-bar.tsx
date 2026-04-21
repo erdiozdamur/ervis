@@ -58,7 +58,7 @@ export function AppTopBar({ user }: AppTopBarProps) {
             className={cn(buttonStyles({ variant: 'secondary', size: 'icon' }), 'h-9 w-9 rounded-2xl sm:h-11 sm:w-auto sm:px-4')}
             aria-label="Yönetim paneli"
           >
-            <Icon name="chart" className="h-4.5 w-4.5" />
+            <Icon name="settings" className="h-4.5 w-4.5" />
             <span className="hidden sm:inline">Yönetim Paneli</span>
           </Link>
         ) : null}
