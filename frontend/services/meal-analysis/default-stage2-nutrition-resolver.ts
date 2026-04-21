@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { getServerEnv } from '@/lib/env';
+import { getEffectiveConfig } from '@/lib/effective-config';
 import type { MealAnalysisContext, MealAnalysisStage2NutritionResolver } from '@/services/meal-analysis/contracts';
 import { resolveNutritionWithOpenAi } from '@/services/meal-analysis/openai-stage2-nutrition-service';
 import type { MealStage1Estimate, MealStage2ResolvedItem } from '@/types/meal-analysis';
@@ -258,12 +258,14 @@ async function ensureHeuristicCatalogEntry(db: PrismaClient, candidate: SharedCa
 
 export class DefaultMealStage2NutritionResolver implements MealAnalysisStage2NutritionResolver {
   provider = 'shared-nutrition-stage2';
-  model = getServerEnv().MEAL_ANALYSIS_STAGE2_MODEL;
+  model = 'gpt-4.1-mini';
   protected async resolveFreshNutritionWithProvider(input: Parameters<typeof resolveNutritionWithOpenAi>[0]) {
     return resolveNutritionWithOpenAi(input);
   }
 
   async resolve(context: MealAnalysisContext, estimate: MealStage1Estimate, db: PrismaClient) {
+    const effectiveConfig = await getEffectiveConfig();
+    this.model = effectiveConfig.mealAnalysisStage2Model;
     const warnings = [...estimate.warnings];
     const resolvedItems: MealStage2ResolvedItem[] = [];
     let stage2Diagnostics:
