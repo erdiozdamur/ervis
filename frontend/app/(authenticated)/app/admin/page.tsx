@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ScreenHeader } from '@/components/layout/screen-header';
 import { Stack } from '@/components/layout/stack';
-import { Button } from '@/components/ui/button';
+import { buttonStyles } from '@/components/ui/button';
 import { StatePanel } from '@/components/ui/state-panel';
 import { isAdminRole } from '@/lib/auth/admin';
 import { requireCurrentUser } from '@/lib/auth/session';
@@ -56,15 +56,17 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         {ADMIN_TABS.map((tab) => {
           const isActive = tab.key === selectedTab;
           return (
-            <Button
+            <Link
               key={tab.key}
-              asChild
-              variant={isActive ? 'primary' : 'secondary'}
-              size="sm"
-              className={cn('rounded-full', isActive ? undefined : 'text-slate-600')}
+              href={`/app/admin?tab=${tab.key}`}
+              className={buttonStyles({
+                variant: isActive ? 'primary' : 'secondary',
+                size: 'sm',
+                className: cn('rounded-full', isActive ? undefined : 'text-slate-600'),
+              })}
             >
-              <Link href={`/app/admin?tab=${tab.key}`}>{tab.label}</Link>
-            </Button>
+              {tab.label}
+            </Link>
           );
         })}
       </nav>
