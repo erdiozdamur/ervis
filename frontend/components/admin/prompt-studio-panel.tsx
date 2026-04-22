@@ -27,6 +27,7 @@ type PromptStudioChange = {
 type PromptStudioResponse = {
   ok: true;
   config: PromptConfig;
+  previousConfig: Partial<PromptConfig> | null;
   changes: PromptStudioChange[];
 };
 
@@ -36,11 +37,15 @@ export function PromptStudioPanel() {
   const [model, setModel] = useState('');
   const [promptVersion, setPromptVersion] = useState('');
   const [changes, setChanges] = useState<PromptStudioChange[]>([]);
+  const [previousConfig, setPreviousConfig] = useState<Partial<PromptConfig> | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [smokeChecks, setSmokeChecks] = useState<Array<{ step: string; ok: boolean; detail: string }>>([]);
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -58,6 +63,7 @@ export function PromptStudioPanel() {
       setProvider(payload.config.provider);
       setModel(payload.config.model);
       setPromptVersion(payload.config.promptVersion);
+      setPreviousConfig(payload.previousConfig);
       setChanges(payload.changes);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
@@ -74,6 +80,59 @@ export function PromptStudioPanel() {
     () => provider.trim().length > 0 && model.trim().length > 0 && promptVersion.trim().length > 0,
     [model, promptVersion, provider],
   );
+
+  const diffRows = useMemo(() => {
+    if (!previousConfig) {
+      return [];
+    }
+
+    const currentRows = {
+      provider,
+      model,
+      promptVersion,
+    };
+
+    return Object.entries(currentRows).map(([key, currentValue]) => ({
+      key,
+      currentValue,
+      previousValue: String((previousConfig as Record<string, string | undefined>)[key] ?? '-'),
+      changed: currentValue.trim() !== String((previousConfig as Record<string, string | undefined>)[key] ?? '').trim(),
+    }));
+  }, [model, previousConfig, promptVersion, provider]);
+
+  function saveDraft() {
+    const payload = {
+      provider: provider.trim(),
+      model: model.trim(),
+      promptVersion: promptVersion.trim(),
+      savedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem('prompt-studio-draft', JSON.stringify(payload));
+    setDraftSavedAt(payload.savedAt);
+    setInfo('Draft local olarak kaydedildi.');
+    setError(null);
+  }
+
+  function loadDraft() {
+    const raw = localStorage.getItem('prompt-studio-draft');
+    if (!raw) {
+      setError('Kaydedilmiş draft bulunamadı.');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as { provider?: string; model?: string; promptVersion?: string; savedAt?: string };
+      setProvider(parsed.provider ?? '');
+      setModel(parsed.model ?? '');
+      setPromptVersion(parsed.promptVersion ?? '');
+      setDraftSavedAt(parsed.savedAt ?? null);
+      setInfo('Draft yüklendi.');
+      setError(null);
+    } catch {
+      setError('Draft okunamadı.');
+    }
+  }
 
   async function testSettings() {
     if (!canSubmit) {
@@ -126,18 +185,47 @@ export function PromptStudioPanel() {
         body: JSON.stringify({ provider, model, promptVersion }),
       });
 
-      const payload = (await response.json()) as { version?: number; message?: string };
+      const payload = (await response.json()) as {
+        version?: number;
+        message?: string;
+        smokeTest?: { checks?: Array<{ step: string; ok: boolean; detail: string }> };
+      };
 
       if (!response.ok) {
         throw new Error(payload.message ?? 'Kaydetme başarısız oldu.');
       }
 
       setInfo(`Prompt ayarları kaydedildi. Yeni sürüm: v${payload.version ?? '?'}.`);
+      setSmokeChecks(payload.smokeTest?.checks ?? []);
       await fetchState();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Kaydetme başarısız oldu.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function rollbackSettings() {
+    setRollingBack(true);
+    setError(null);
+    setInfo(null);
+
+    try {
+      const response = await fetch('/api/admin/prompt-studio', {
+        method: 'DELETE',
+      });
+
+      const payload = (await response.json()) as { message?: string; version?: number };
+      if (!response.ok) {
+        throw new Error(payload.message ?? 'Rollback başarısız oldu.');
+      }
+
+      setInfo(`Rollback tamamlandı. Aktif sürüm: v${payload.version ?? '?'}.`);
+      await fetchState();
+    } catch (rollbackError) {
+      setError(rollbackError instanceof Error ? rollbackError.message : 'Rollback başarısız oldu.');
+    } finally {
+      setRollingBack(false);
     }
   }
 
@@ -162,8 +250,17 @@ export function PromptStudioPanel() {
         <Button variant="secondary" size="md" disabled={!canSubmit || testing || submitting} onClick={testSettings}>
           {testing ? 'Test ediliyor...' : 'Kaydetmeden önce test et'}
         </Button>
-        <Button size="md" disabled={!canSubmit || submitting || testing} onClick={saveSettings}>
-          {submitting ? 'Kaydediliyor...' : 'Kaydet'}
+        <Button variant="ghost" size="md" disabled={!canSubmit || testing || submitting || rollingBack} onClick={saveDraft}>
+          Draft kaydet
+        </Button>
+        <Button variant="secondary" size="md" disabled={testing || submitting || rollingBack} onClick={loadDraft}>
+          Draft yükle
+        </Button>
+        <Button size="md" disabled={!canSubmit || submitting || testing || rollingBack} onClick={saveSettings}>
+          {submitting ? 'Yayınlanıyor...' : 'Publish'}
+        </Button>
+        <Button variant="ghost" size="md" disabled={submitting || testing || rollingBack} onClick={rollbackSettings}>
+          {rollingBack ? 'Rollback...' : 'Rollback'}
         </Button>
       </div>
 
@@ -175,6 +272,34 @@ export function PromptStudioPanel() {
 
       {error ? <StatePanel variant="error" title="İşlem hatası" description={error} /> : null}
       {info ? <StatePanel variant="success" title="İşlem sonucu" description={info} /> : null}
+      {draftSavedAt ? <p className="text-xs text-slate-500">Son draft kaydı: {new Date(draftSavedAt).toLocaleString('tr-TR')}</p> : null}
+
+      {diffRows.length > 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-4">
+          <h3 className="text-base font-semibold text-slate-900">Diff viewer (vN vs vN-1)</h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            {diffRows.map((row) => (
+              <li key={row.key} className="rounded-2xl border border-slate-100 px-3 py-2 text-slate-700">
+                <strong>{row.key}</strong> · eski: <code>{row.previousValue}</code> · yeni: <code>{row.currentValue}</code>{' '}
+                {row.changed ? <span className="font-semibold text-amber-700">değişti</span> : <span className="text-slate-500">aynı</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {smokeChecks.length > 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-4">
+          <h3 className="text-base font-semibold text-slate-900">Publish sonrası smoke test</h3>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+            {smokeChecks.map((check) => (
+              <li key={check.step}>
+                {check.ok ? '✅' : '❌'} {check.step} — {check.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="rounded-3xl border border-slate-200 bg-white p-4">
         <h3 className="text-base font-semibold text-slate-900">Son 10 değişiklik</h3>
