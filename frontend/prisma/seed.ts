@@ -1,38 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { appMetaRegistry, validateAppMetaRecord } from '@/lib/app-meta';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const appNameMeta = validateAppMetaRecord(
-    'app.name',
-    { name: 'Calorie Tracker' },
-    { version: 1, publishedAt: new Date('2026-04-21T00:00:00.000Z'), publishedBy: 'seed-script' },
-  );
-
   await prisma.appMeta.upsert({
-    where: {
-      namespace_key: {
-        namespace: appNameMeta.namespace,
-        key: appNameMeta.key,
-      },
-    },
-    update: {
-      valueJson: appNameMeta.value,
-      valueSchemaJson: appMetaRegistry['app.name'].jsonSchema,
-      version: appNameMeta.versioning.version,
-      publishedAt: appNameMeta.versioning.publishedAt,
-      publishedBy: appNameMeta.versioning.publishedBy,
-    },
-    create: {
-      namespace: appNameMeta.namespace,
-      key: appNameMeta.key,
-      valueJson: appNameMeta.value,
-      valueSchemaJson: appMetaRegistry['app.name'].jsonSchema,
-      version: appNameMeta.versioning.version,
-      publishedAt: appNameMeta.versioning.publishedAt,
-      publishedBy: appNameMeta.versioning.publishedBy,
-    },
+    where: { key: 'app_name' },
+    update: { value: 'Calorie Tracker' },
+    create: { key: 'app_name', value: 'Calorie Tracker' },
   });
 
   const sharedFoods = [

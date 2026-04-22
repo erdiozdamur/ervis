@@ -2,8 +2,9 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { MealInputAssetType, Prisma } from '@prisma/client';
 import { prisma } from '@/db/prisma';
+import { DEFAULT_APP_TIME_ZONE } from '@/lib/config/app';
 import { getAppDayDate, getAppDayKey } from '@/lib/date/istanbul';
-import { getEffectiveConfig } from '@/lib/effective-config';
+import { getServerEnv } from '@/lib/env';
 import {
   MAX_AUDIO_ASSET_COUNT,
   MAX_IMAGE_ASSET_COUNT,
@@ -83,9 +84,9 @@ function createValidationError(message: string, fieldErrors?: MealIntakeFieldErr
   };
 }
 
-async function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): Promise<MealDraftCreateResult | null> {
-  const { mealAssetMaxFileSizeMb } = await getEffectiveConfig();
-  const maxFileSizeBytes = mealAssetMaxFileSizeMb * 1024 * 1024;
+function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): MealDraftCreateResult | null {
+  const { MEAL_ASSET_MAX_FILE_SIZE_MB } = getServerEnv();
+  const maxFileSizeBytes = MEAL_ASSET_MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const imageCount = binaryAssets.filter((asset) => asset.assetType === 'IMAGE').length;
   const audioCount = binaryAssets.filter((asset) => asset.assetType === 'AUDIO').length;
@@ -122,8 +123,8 @@ async function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): Promise<M
     if (asset.file.size > maxFileSizeBytes) {
       const field = asset.assetType === 'IMAGE' ? 'images' : 'audio';
 
-      return createValidationError(`Seçilen bir dosya ${mealAssetMaxFileSizeMb} MB sınırını aşıyor.`, {
-        [field]: `Her dosya ${mealAssetMaxFileSizeMb} MB altında olmalı.`,
+      return createValidationError(`Seçilen bir dosya ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB sınırını aşıyor.`, {
+        [field]: `Her dosya ${MEAL_ASSET_MAX_FILE_SIZE_MB} MB altında olmalı.`,
       });
     }
   }
@@ -132,7 +133,6 @@ async function validateBinaryAssets(binaryAssets: BinaryAssetInput[]): Promise<M
 }
 
 export async function createMealDraftFromIntake(userId: string, formData: FormData): Promise<MealDraftCreateResult> {
-  const effectiveConfig = await getEffectiveConfig();
   const description = trimText(formData.get('description'));
   const imageUploads = collectFiles(formData, 'imageUploads');
   const cameraCaptures = collectFiles(formData, 'cameraCaptures');
@@ -156,7 +156,7 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
     return createValidationError('Taslak başlatmak için yazı, fotoğraf veya ses notu ekle.');
   }
 
-  const validationError = await validateBinaryAssets(binaryAssets);
+  const validationError = validateBinaryAssets(binaryAssets);
 
   if (validationError) {
     return validationError;
@@ -186,7 +186,7 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
       contractVersion: 'meal-analysis-request-v1',
       requestedAt: now.toISOString(),
       dayKey,
-      timeZone: effectiveConfig.appTimeZone,
+      timeZone: DEFAULT_APP_TIME_ZONE,
       description: description || null,
       assetCounts: {
         text: textCount,
@@ -221,13 +221,15 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
     };
 
     const requestFingerprint = createHash('sha256').update(JSON.stringify(requestJson)).digest('hex');
+    const env = getServerEnv();
+
     const result = await prisma.$transaction(async (tx) => {
       const meal = await tx.meal.create({
         data: {
           userId,
           status: 'DRAFT',
           mealType: 'OTHER',
-          timeZone: effectiveConfig.appTimeZone,
+          timeZone: DEFAULT_APP_TIME_ZONE,
           mealDate,
           consumedAt: now,
         },
@@ -283,9 +285,9 @@ export async function createMealDraftFromIntake(userId: string, formData: FormDa
           mealId: meal.id,
           userId,
           status: 'QUEUED',
-          provider: effectiveConfig.aiProvider,
-          model: effectiveConfig.mealAnalysisStage1Model,
-          promptVersion: effectiveConfig.aiAnalysisPromptVersion,
+          provider: env.AI_PROVIDER,
+          model: env.MEAL_ANALYSIS_STAGE1_MODEL,
+          promptVersion: env.AI_ANALYSIS_PROMPT_VERSION,
           requestFingerprint,
           requestJson,
         },
