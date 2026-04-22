@@ -91,13 +91,6 @@ const iconMap = {
   check: (
     <path d="m7.75 12.25 2.5 2.5 6-6.25" strokeLinecap="round" strokeLinejoin="round" />
   ),
-  chart: (
-    <path
-      d="M6.5 18.25V10.5m5.5 7.75V5.75m5.5 12.5v-4.5M4.75 18.25h14.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  ),
 } as const;
 
 export type IconName = keyof typeof iconMap;
