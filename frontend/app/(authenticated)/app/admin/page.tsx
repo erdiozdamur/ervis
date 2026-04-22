@@ -7,6 +7,7 @@ import { StatePanel } from '@/components/ui/state-panel';
 import { PromptStudioPanel } from '@/components/admin/prompt-studio-panel';
 import { UsersAdminPanel } from '@/components/admin/users-admin-panel';
 import { AppSettingsPanel } from '@/components/admin/app-settings-panel';
+import { AuditLogsPanel } from '@/components/admin/audit-logs-panel';
 import { isAdminRole } from '@/lib/auth/admin';
 import { requireCurrentUser } from '@/lib/auth/session';
 import { cn } from '@/lib/utils/cn';
@@ -80,6 +81,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         <PromptStudioPanel />
       ) : selectedTab === 'app-settings' ? (
         <AppSettingsPanel />
+      ) : selectedTab === 'audit-logs' ? (
+        <AuditLogsPanel />
       ) : (
         <StatePanel
           variant="empty"
