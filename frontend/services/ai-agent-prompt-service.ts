@@ -1,5 +1,42 @@
 import { prisma } from '@/db/prisma';
 
+type AppMetaColumnSet = {
+  hasNamespace: boolean;
+  hasValue: boolean;
+  hasValueJson: boolean;
+};
+
+let appMetaColumnSetPromise: Promise<AppMetaColumnSet> | null = null;
+
+async function getAppMetaColumnSet(): Promise<AppMetaColumnSet> {
+  if (appMetaColumnSetPromise) {
+    return appMetaColumnSetPromise;
+  }
+
+  appMetaColumnSetPromise = prisma
+    .$queryRaw<Array<{ column_name: string }>>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'AppMeta'
+    `
+    .then((rows) => {
+      const names = new Set(rows.map((row) => row.column_name));
+      return {
+        hasNamespace: names.has('namespace'),
+        hasValue: names.has('value'),
+        hasValueJson: names.has('valueJson'),
+      };
+    })
+    .catch(() => ({
+      hasNamespace: false,
+      hasValue: true,
+      hasValueJson: false,
+    }));
+
+  return appMetaColumnSetPromise;
+}
+
 export type AgentPromptDefinition = {
   key: string;
   agent: string;
@@ -9,6 +46,7 @@ export type AgentPromptDefinition = {
 };
 
 const PROMPT_KEY_PREFIX = 'agent_prompt:';
+const PROMPT_NAMESPACE = 'agent_prompt';
 
 export const AGENT_PROMPT_DEFINITIONS: AgentPromptDefinition[] = [
   {
@@ -71,12 +109,67 @@ export const AGENT_PROMPT_DEFINITIONS: AgentPromptDefinition[] = [
 
 const promptDefinitionByKey = new Map(AGENT_PROMPT_DEFINITIONS.map((definition) => [definition.key, definition]));
 
-function toAppMetaKey(promptKey: string) {
+function toLegacyAppMetaKey(promptKey: string) {
   return `${PROMPT_KEY_PREFIX}${promptKey}`;
+}
+
+function parseValueJsonToText(valueJson: unknown) {
+  if (typeof valueJson === 'string') {
+    return valueJson;
+  }
+
+  if (valueJson && typeof valueJson === 'object' && 'text' in valueJson) {
+    const row = valueJson as { text?: unknown };
+    if (typeof row.text === 'string') {
+      return row.text;
+    }
+  }
+
+  return null;
 }
 
 export function getPromptDefinition(promptKey: string) {
   return promptDefinitionByKey.get(promptKey) ?? null;
+}
+
+async function getStoredPromptText(promptKey: string) {
+  const columns = await getAppMetaColumnSet();
+
+  if (columns.hasValue) {
+    const rows = await prisma.$queryRaw<Array<{ value: string | null }>>`
+      SELECT "value"
+      FROM "AppMeta"
+      WHERE "key" = ${toLegacyAppMetaKey(promptKey)}
+      LIMIT 1
+    `;
+
+    return rows[0]?.value ?? null;
+  }
+
+  if (columns.hasValueJson && columns.hasNamespace) {
+    const rows = await prisma.$queryRaw<Array<{ valueJson: unknown }>>`
+      SELECT "valueJson"
+      FROM "AppMeta"
+      WHERE "namespace" = ${PROMPT_NAMESPACE}
+        AND "key" = ${promptKey}
+      LIMIT 1
+    `;
+
+    return parseValueJsonToText(rows[0]?.valueJson ?? null);
+  }
+
+  if (columns.hasValueJson) {
+    const rows = await prisma.$queryRaw<Array<{ valueJson: unknown }>>`
+      SELECT "valueJson"
+      FROM "AppMeta"
+      WHERE "key" = ${toLegacyAppMetaKey(promptKey)}
+      LIMIT 1
+    `;
+
+    return parseValueJsonToText(rows[0]?.valueJson ?? null);
+  }
+
+  return null;
 }
 
 export async function getAgentPromptText(promptKey: string) {
@@ -85,44 +178,62 @@ export async function getAgentPromptText(promptKey: string) {
     throw new Error(`Unknown prompt key: ${promptKey}`);
   }
 
-  const promptMeta = await prisma.appMeta.findUnique({
-    where: {
-      key: toAppMetaKey(promptKey),
-    },
-    select: {
-      value: true,
-    },
-  });
-
-  return promptMeta?.value && promptMeta.value.trim().length > 0 ? promptMeta.value : definition.defaultText;
+  const storedText = await getStoredPromptText(promptKey).catch(() => null);
+  return storedText && storedText.trim().length > 0 ? storedText : definition.defaultText;
 }
 
 export async function listAgentPromptConfigs() {
-  const appMetaRows = await prisma.appMeta.findMany({
-    where: {
-      key: {
-        startsWith: PROMPT_KEY_PREFIX,
-      },
-    },
-    select: {
-      key: true,
-      value: true,
-      updatedAt: true,
-    },
-  });
+  const columns = await getAppMetaColumnSet();
+
+  let rows: Array<{ promptKey: string; storedText: string | null; updatedAt: Date | null }> = [];
+
+  if (columns.hasValue) {
+    const rawRows = await prisma.$queryRaw<Array<{ key: string; value: string | null; updatedAt: Date | null }>>`
+      SELECT "key", "value", "updatedAt"
+      FROM "AppMeta"
+      WHERE "key" LIKE ${`${PROMPT_KEY_PREFIX}%`}
+    `;
+
+    rows = rawRows.map((row) => ({
+      promptKey: row.key.replace(PROMPT_KEY_PREFIX, ''),
+      storedText: row.value,
+      updatedAt: row.updatedAt,
+    }));
+  } else if (columns.hasValueJson && columns.hasNamespace) {
+    const rawRows = await prisma.$queryRaw<Array<{ key: string; valueJson: unknown; updatedAt: Date | null }>>`
+      SELECT "key", "valueJson", "updatedAt"
+      FROM "AppMeta"
+      WHERE "namespace" = ${PROMPT_NAMESPACE}
+    `;
+
+    rows = rawRows.map((row) => ({
+      promptKey: row.key,
+      storedText: parseValueJsonToText(row.valueJson),
+      updatedAt: row.updatedAt,
+    }));
+  } else if (columns.hasValueJson) {
+    const rawRows = await prisma.$queryRaw<Array<{ key: string; valueJson: unknown; updatedAt: Date | null }>>`
+      SELECT "key", "valueJson", "updatedAt"
+      FROM "AppMeta"
+      WHERE "key" LIKE ${`${PROMPT_KEY_PREFIX}%`}
+    `;
+
+    rows = rawRows.map((row) => ({
+      promptKey: row.key.replace(PROMPT_KEY_PREFIX, ''),
+      storedText: parseValueJsonToText(row.valueJson),
+      updatedAt: row.updatedAt,
+    }));
+  }
 
   const rowByPromptKey = new Map(
-    appMetaRows
-      .map((row) => {
-        const promptKey = row.key.replace(PROMPT_KEY_PREFIX, '');
-        return [promptKey, row] as const;
-      })
-      .filter(([promptKey]) => Boolean(promptDefinitionByKey.get(promptKey))),
+    rows
+      .filter((row) => Boolean(promptDefinitionByKey.get(row.promptKey)))
+      .map((row) => [row.promptKey, row] as const),
   );
 
   return AGENT_PROMPT_DEFINITIONS.map((definition) => {
     const row = rowByPromptKey.get(definition.key);
-    const editedText = row?.value ?? null;
+    const editedText = row?.storedText ?? null;
 
     return {
       key: definition.key,
@@ -147,16 +258,43 @@ export async function updateAgentPromptText(input: { key: string; text: string }
     throw new Error('Prompt metni boş olamaz.');
   }
 
-  await prisma.appMeta.upsert({
-    where: {
-      key: toAppMetaKey(input.key),
-    },
-    update: {
-      value: trimmedText,
-    },
-    create: {
-      key: toAppMetaKey(input.key),
-      value: trimmedText,
-    },
-  });
+  const columns = await getAppMetaColumnSet();
+  const recordId = `agent-prompt-${input.key}`;
+
+  if (columns.hasValue) {
+    await prisma.$executeRaw`
+      INSERT INTO "AppMeta" ("id", "key", "value", "createdAt", "updatedAt")
+      VALUES (${recordId}, ${toLegacyAppMetaKey(input.key)}, ${trimmedText}, NOW(), NOW())
+      ON CONFLICT ("key")
+      DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
+    `;
+    return;
+  }
+
+  if (columns.hasValueJson && columns.hasNamespace) {
+    await prisma.$executeRaw`
+      INSERT INTO "AppMeta" ("id", "namespace", "key", "valueJson", "valueSchemaJson", "version", "publishedAt", "publishedBy", "createdAt", "updatedAt")
+      VALUES (${recordId}, ${PROMPT_NAMESPACE}, ${input.key}, ${JSON.stringify(trimmedText)}::jsonb, '{}'::jsonb, 1, NOW(), 'admin-ui', NOW(), NOW())
+      ON CONFLICT ("namespace", "key")
+      DO UPDATE SET
+        "valueJson" = EXCLUDED."valueJson",
+        "updatedAt" = NOW(),
+        "publishedAt" = NOW(),
+        "publishedBy" = 'admin-ui',
+        "version" = "AppMeta"."version" + 1
+    `;
+    return;
+  }
+
+  if (columns.hasValueJson) {
+    await prisma.$executeRaw`
+      INSERT INTO "AppMeta" ("id", "key", "valueJson", "createdAt", "updatedAt")
+      VALUES (${recordId}, ${toLegacyAppMetaKey(input.key)}, ${JSON.stringify(trimmedText)}::jsonb, NOW(), NOW())
+      ON CONFLICT ("key")
+      DO UPDATE SET "valueJson" = EXCLUDED."valueJson", "updatedAt" = NOW()
+    `;
+    return;
+  }
+
+  throw new Error('AppMeta tablosunda prompt saklamak için desteklenen kolon yapısı bulunamadı.');
 }
