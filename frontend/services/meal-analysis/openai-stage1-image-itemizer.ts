@@ -2,6 +2,7 @@ import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
+import { getAgentPromptText } from '@/services/ai-agent-prompt-service';
 import type { MealAnalysisAssetInput } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -318,25 +319,13 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
     consumedAtIso: string;
   };
 }): Promise<OpenAiImageItemizationResult> {
+  const primaryPrompt = await getAgentPromptText('meal_analysis_stage1_primary');
+  const retryPrompt = await getAgentPromptText('meal_analysis_stage1_platter_retry');
+
   const primaryResult = await requestImageItemization({
     asset: input.asset,
     mealContext: input.mealContext,
-      instructions: [
-        'You are a food-item detector for a Turkish calorie tracking app.',
-        'Identify distinct foods visible in the photo as separate list entries.',
-        'Use Turkish display names.',
-        'Do not include file names, camera labels, or generic placeholders.',
-        'Estimate practical single-person quantities for home/restaurant portions.',
-        'quantityMultiplier must be a serving-scale number (e.g. 1, 0.5, 1.5, 2).',
-        'Split only foods that are physically separate and separately served on the plate.',
-        'Do not split a single mixed dish or cooked combined dish into ingredients.',
-        'If there are clearly visible separate sections on one plate, return multiple items rather than one umbrella plate label.',
-        'If you can see several mezes, side dishes, pastries, desserts, or salad portions on one plate, list each visible section separately.',
-        'Only return zero items when no edible food is visible or the image is too unclear to identify any food at all.',
-        'For example: pilav + tas kebabı + patates kızartması should be separate items.',
-        'For example: kısır + yaprak sarma + Rus salatası + poğaça + tatlı on one plate should be separate items.',
-        'For example: karnıyarık, musakka, mantı, çorba, burger, sandviç should each stay as one item.',
-      ],
+    instructions: [primaryPrompt],
   });
 
   const postProcessedPrimaryItems = applyImageItemizationPostProcessing(primaryResult.items, input.asset.labelHint);
@@ -345,15 +334,7 @@ export async function extractMealItemsFromImageWithOpenAi(input: {
     const retryResult = await requestImageItemization({
       asset: input.asset,
       mealContext: input.mealContext,
-      instructions: [
-        'You are separating a platter into distinct foods for a Turkish calorie tracking app.',
-        'Return separate foods only when they are visibly distinct and separately served on the same plate.',
-        'Do not return one umbrella label such as meze tabağı, karışık tabak, mixed plate, platter, or breakfast plate.',
-        'Name each visible component separately in Turkish.',
-        'If the image shows kısır, yaprak sarma, Rus salatası, börek, tatlı gibi ayrı bölümler, list them as separate items.',
-        'If there are 3 or more clearly distinct food sections, return them separately instead of one combined answer.',
-        'Do not split a single cooked mixed dish into ingredients.',
-      ],
+      instructions: [retryPrompt],
     });
 
     const retryItems = applyImageItemizationPostProcessing(retryResult.items, input.asset.labelHint);
