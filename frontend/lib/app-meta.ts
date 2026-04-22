@@ -15,6 +15,14 @@ const aiMealModelValueSchema = z.object({
   temperature: z.number().min(0).max(2),
 });
 
+const aiProviderValueSchema = z.object({
+  provider: z.string().min(1),
+});
+
+const aiAnalysisPromptVersionValueSchema = z.object({
+  version: z.string().min(1),
+});
+
 const featureMealDraftReviewValueSchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().int().min(0).max(100),
@@ -58,6 +66,32 @@ export const appMetaRegistry = {
       properties: {
         model: { type: 'string', minLength: 1 },
         temperature: { type: 'number', minimum: 0, maximum: 2 },
+      },
+    },
+  },
+  'ai.provider': {
+    namespace: 'ai',
+    key: 'provider',
+    valueSchema: aiProviderValueSchema,
+    jsonSchema: {
+      type: 'object',
+      required: ['provider'],
+      additionalProperties: false,
+      properties: {
+        provider: { type: 'string', minLength: 1 },
+      },
+    },
+  },
+  'ai.analysisPromptVersion': {
+    namespace: 'ai',
+    key: 'analysisPromptVersion',
+    valueSchema: aiAnalysisPromptVersionValueSchema,
+    jsonSchema: {
+      type: 'object',
+      required: ['version'],
+      additionalProperties: false,
+      properties: {
+        version: { type: 'string', minLength: 1 },
       },
     },
   },
