@@ -5,17 +5,9 @@ import { StatePanel } from '@/components/ui/state-panel';
 export default function AdminLoading() {
   return (
     <Stack gap="lg">
-      <ScreenHeader
-        eyebrow="Admin"
-        title="Admin Panel"
-        description="Preparing admin modules with a shared state model."
-      />
+      <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Yönetim modülleri hazırlanıyor." />
 
-      <StatePanel
-        variant="loading"
-        title="Admin modules are loading"
-        description="All admin tabs use the same loader semantics so every panel reports progress in a predictable way."
-      />
+      <StatePanel variant="loading" title="Yönetim modülleri yükleniyor" description="Tüm paneller için ortak yükleme akışı çalışıyor..." />
     </Stack>
   );
 }

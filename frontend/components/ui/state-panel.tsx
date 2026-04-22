@@ -6,22 +6,22 @@ import { cn } from '@/lib/utils/cn';
 const variantMap = {
   empty: {
     icon: 'today',
-    badge: 'Ready for first entry',
+    badge: 'Hazır',
     iconWrap: 'bg-slate-100 text-slate-800',
   },
   loading: {
     icon: 'spark',
-    badge: 'Working gently',
+    badge: 'Yükleniyor',
     iconWrap: 'bg-cyan-50 text-cyan-700',
   },
   error: {
     icon: 'warning',
-    badge: 'Needs recovery',
+    badge: 'Dikkat',
     iconWrap: 'bg-rose-50 text-rose-700',
   },
   success: {
     icon: 'check',
-    badge: 'Looks good',
+    badge: 'Tamam',
     iconWrap: 'bg-emerald-50 text-emerald-700',
   },
 } as const satisfies Record<string, { icon: IconName; badge: string; iconWrap: string }>;

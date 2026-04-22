@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
 import { createMutationHeaders, createMutationHeadersWithoutJson } from '@/lib/security/mutation-request';
+import { AdminModuleHeader } from '@/components/admin/admin-module-header';
 
 type PromptConfig = {
   provider: string;
   model: string;
+  temperature: number;
   promptVersion: string;
   version: number;
   lastPublishedBy: string | null;
@@ -28,18 +30,26 @@ type PromptStudioChange = {
 type PromptStudioResponse = {
   ok: true;
   csrfToken: string;
+  permissions: {
+    canWrite: boolean;
+  };
   config: PromptConfig;
   previousConfig: Partial<PromptConfig> | null;
   changes: PromptStudioChange[];
   secretStatus: {
-    openaiApiKey: 'configured' | 'not configured';
+    openaiApiKey: 'tanimli' | 'tanimli_degil';
   };
 };
 
-export function PromptStudioPanel() {
+type PromptStudioPanelProps = {
+  mode?: 'all' | 'ai' | 'prompt';
+};
+
+export function PromptStudioPanel({ mode = 'all' }: PromptStudioPanelProps) {
   const [config, setConfig] = useState<PromptConfig | null>(null);
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
+  const [temperature, setTemperature] = useState('0.2');
   const [promptVersion, setPromptVersion] = useState('');
   const [changes, setChanges] = useState<PromptStudioChange[]>([]);
   const [previousConfig, setPreviousConfig] = useState<Partial<PromptConfig> | null>(null);
@@ -54,8 +64,10 @@ export function PromptStudioPanel() {
   const [publishReason, setPublishReason] = useState('');
   const [publishConfirm, setPublishConfirm] = useState('');
   const [fourEyesApproverEmail, setFourEyesApproverEmail] = useState('');
-  const [openAiApiKeyStatus, setOpenAiApiKeyStatus] = useState<'configured' | 'not configured'>('not configured');
+  const [openAiApiKeyStatus, setOpenAiApiKeyStatus] = useState<'tanimli' | 'tanimli_degil'>('tanimli_degil');
   const [csrfToken, setCsrfToken] = useState('');
+  const [canWrite, setCanWrite] = useState(false);
+  const [rollbackConfirm, setRollbackConfirm] = useState('');
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -66,17 +78,19 @@ export function PromptStudioPanel() {
       const payload = (await response.json()) as PromptStudioResponse;
 
       if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? 'Prompt ayarları alınamadı.');
+        throw new Error((payload as { message?: string }).message ?? 'Yapay zekâ/istem ayarları alınamadı.');
       }
 
       setConfig(payload.config);
       setProvider(payload.config.provider);
       setModel(payload.config.model);
+      setTemperature(String(payload.config.temperature));
       setPromptVersion(payload.config.promptVersion);
       setPreviousConfig(payload.previousConfig);
       setChanges(payload.changes);
       setOpenAiApiKeyStatus(payload.secretStatus.openaiApiKey);
       setCsrfToken(payload.csrfToken);
+      setCanWrite(payload.permissions.canWrite);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
     } finally {
@@ -89,9 +103,11 @@ export function PromptStudioPanel() {
   }, [fetchState]);
 
   const canSubmit = useMemo(
-    () => provider.trim().length > 0 && model.trim().length > 0 && promptVersion.trim().length > 0,
-    [model, promptVersion, provider],
+    () => provider.trim().length > 0 && model.trim().length > 0 && promptVersion.trim().length > 0 && temperature.trim().length > 0,
+    [model, promptVersion, provider, temperature],
   );
+  const temperatureValue = Number(temperature);
+  const isTemperatureValid = Number.isFinite(temperatureValue) && temperatureValue >= 0 && temperatureValue <= 2;
 
   const diffRows = useMemo(() => {
     if (!previousConfig) {
@@ -101,6 +117,7 @@ export function PromptStudioPanel() {
     const currentRows = {
       provider,
       model,
+      temperature,
       promptVersion,
     };
 
@@ -110,39 +127,41 @@ export function PromptStudioPanel() {
       previousValue: String((previousConfig as Record<string, string | undefined>)[key] ?? '-'),
       changed: currentValue.trim() !== String((previousConfig as Record<string, string | undefined>)[key] ?? '').trim(),
     }));
-  }, [model, previousConfig, promptVersion, provider]);
+  }, [model, previousConfig, promptVersion, provider, temperature]);
 
   function saveDraft() {
     const payload = {
       provider: provider.trim(),
       model: model.trim(),
+      temperature: Number(temperature),
       promptVersion: promptVersion.trim(),
       savedAt: new Date().toISOString(),
     };
 
     localStorage.setItem('prompt-studio-draft', JSON.stringify(payload));
     setDraftSavedAt(payload.savedAt);
-    setInfo('Draft local olarak kaydedildi.');
+    setInfo('Taslak yerel olarak kaydedildi.');
     setError(null);
   }
 
   function loadDraft() {
     const raw = localStorage.getItem('prompt-studio-draft');
     if (!raw) {
-      setError('Kaydedilmiş draft bulunamadı.');
+      setError('Kaydedilmiş taslak bulunamadı.');
       return;
     }
 
     try {
-      const parsed = JSON.parse(raw) as { provider?: string; model?: string; promptVersion?: string; savedAt?: string };
+      const parsed = JSON.parse(raw) as { provider?: string; model?: string; temperature?: number; promptVersion?: string; savedAt?: string };
       setProvider(parsed.provider ?? '');
       setModel(parsed.model ?? '');
+      setTemperature(String(parsed.temperature ?? 0.2));
       setPromptVersion(parsed.promptVersion ?? '');
       setDraftSavedAt(parsed.savedAt ?? null);
-      setInfo('Draft yüklendi.');
+      setInfo('Taslak yüklendi.');
       setError(null);
     } catch {
-      setError('Draft okunamadı.');
+      setError('Taslak okunamadı.');
     }
   }
 
@@ -161,7 +180,7 @@ export function PromptStudioPanel() {
         headers: {
           ...createMutationHeaders(csrfToken),
         },
-        body: JSON.stringify({ provider, model, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
+        body: JSON.stringify({ provider, model, temperature: temperatureValue, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
       });
 
       const payload = (await response.json()) as { message?: string; warnings?: string[] };
@@ -194,7 +213,7 @@ export function PromptStudioPanel() {
         headers: {
           ...createMutationHeaders(csrfToken),
         },
-        body: JSON.stringify({ provider, model, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
+        body: JSON.stringify({ provider, model, temperature: temperatureValue, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
       });
 
       const payload = (await response.json()) as {
@@ -207,7 +226,7 @@ export function PromptStudioPanel() {
         throw new Error(payload.message ?? 'Kaydetme başarısız oldu.');
       }
 
-      setInfo(`Prompt ayarları kaydedildi. Yeni sürüm: v${payload.version ?? '?'}.`);
+      setInfo(`Ayarlar kaydedildi. Yeni sürüm: v${payload.version ?? '?'}.`);
       setSmokeChecks(payload.smokeTest?.checks ?? []);
       setPublishReason('');
       setPublishConfirm('');
@@ -233,72 +252,150 @@ export function PromptStudioPanel() {
 
       const payload = (await response.json()) as { message?: string; version?: number };
       if (!response.ok) {
-        throw new Error(payload.message ?? 'Rollback başarısız oldu.');
+        throw new Error(payload.message ?? 'Geri alma işlemi başarısız oldu.');
       }
 
-      setInfo(`Rollback tamamlandı. Aktif sürüm: v${payload.version ?? '?'}.`);
+      setInfo(`Geri alma tamamlandı. Aktif sürüm: v${payload.version ?? '?'}.`);
+      setRollbackConfirm('');
       await fetchState();
     } catch (rollbackError) {
-      setError(rollbackError instanceof Error ? rollbackError.message : 'Rollback başarısız oldu.');
+      setError(rollbackError instanceof Error ? rollbackError.message : 'Geri alma başarısız oldu.');
     } finally {
       setRollingBack(false);
     }
   }
 
   if (loading) {
-    return <StatePanel variant="loading" title="Prompt Studio yükleniyor" description="Ayarlar hazırlanıyor..." />;
+    return <StatePanel variant="loading" title="Yapay zekâ/istem ayarları yükleniyor" description="Ayarlar hazırlanıyor..." />;
   }
+
+  const showAiFields = mode === 'all' || mode === 'ai';
+  const showPromptField = mode === 'all' || mode === 'prompt';
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-3">
-        <Input value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Provider (örn: openai)" className="h-12" />
-        <Input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Model (örn: gpt-4.1-mini)" className="h-12" />
-        <Input
-          value={promptVersion}
-          onChange={(event) => setPromptVersion(event.target.value)}
-          placeholder="Prompt version (örn: meal-intake-v2)"
-          className="h-12"
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="md" disabled={!canSubmit || testing || submitting} onClick={testSettings}>
-          {testing ? 'Test ediliyor...' : 'Kaydetmeden önce test et'}
-        </Button>
-        <Button variant="ghost" size="md" disabled={!canSubmit || testing || submitting || rollingBack} onClick={saveDraft}>
-          Draft kaydet
-        </Button>
-        <Button variant="secondary" size="md" disabled={testing || submitting || rollingBack} onClick={loadDraft}>
-          Draft yükle
-        </Button>
-        <Button
-          size="md"
-          disabled={!canSubmit || publishReason.trim().length < 10 || publishConfirm.trim().toUpperCase() !== 'ONAYLA' || submitting || testing || rollingBack}
-          onClick={saveSettings}
-        >
-          {submitting ? 'Yayınlanıyor...' : 'Publish'}
-        </Button>
-        <Button variant="ghost" size="md" disabled={submitting || testing || rollingBack} onClick={rollbackSettings}>
-          {rollingBack ? 'Rollback...' : 'Rollback'}
-        </Button>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Input
-          value={publishReason}
-          onChange={(event) => setPublishReason(event.target.value)}
-          placeholder="Publish gerekçesi (zorunlu, min 10 karakter)"
-          className="h-12 md:col-span-2"
-        />
-        <Input value={publishConfirm} onChange={(event) => setPublishConfirm(event.target.value)} placeholder="ONAYLA" className="h-12" />
-      </div>
-      <Input
-        value={fourEyesApproverEmail}
-        onChange={(event) => setFourEyesApproverEmail(event.target.value)}
-        placeholder="4-eyes için SUPER_ADMIN e-posta (opsiyonel)"
-        className="h-12"
+      <AdminModuleHeader
+        title={mode === 'ai' ? 'Yapay Zekâ Ayarları' : mode === 'prompt' ? 'İstem Yönetimi' : 'Yapay Zekâ ve İstem Yönetimi'}
+        description={
+          mode === 'ai'
+            ? 'Yapay zekâ sağlayıcısı ve model seçimini bu ekrandan yönetirsiniz.'
+            : mode === 'prompt'
+              ? 'İstem sürümünü test edip yayınlama işlemlerini bu ekrandan yürütürsünüz.'
+              : 'Yapay zekâ sağlayıcısı, model ve prompt sürümünü birlikte yönetirsiniz.'
+        }
+        hint="Yayınlama öncesi test butonunu kullanın. Kritik değişikliklerde ikinci onay e-postası girmeniz önerilir."
       />
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 lg:p-5">
+          <h3 className="text-base font-semibold text-slate-900">Ayar Formu</h3>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {showAiFields ? (
+              <>
+                <div className="space-y-1">
+                  <label htmlFor="ai-provider" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Yapay zekâ sağlayıcısı
+                  </label>
+                  <Input id="ai-provider" value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Örn: openai" className="h-12" />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="ai-model" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Yapay zekâ modeli
+                  </label>
+                  <Input id="ai-model" value={model} onChange={(event) => setModel(event.target.value)} placeholder="Örn: gpt-4.1-mini" className="h-12" />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="ai-temperature" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Sıcaklık (0-2)
+                  </label>
+                  <Input id="ai-temperature" type="number" min={0} max={2} step={0.1} value={temperature} onChange={(event) => setTemperature(event.target.value)} className="h-12" />
+                  {!isTemperatureValid ? <p className="text-xs text-rose-600">Sıcaklık değeri 0 ile 2 arasında olmalıdır.</p> : null}
+                </div>
+              </>
+            ) : null}
+            {showPromptField ? (
+              <div className="space-y-1">
+                <label htmlFor="prompt-version" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  İstem sürümü
+                </label>
+                <Input id="prompt-version" value={promptVersion} onChange={(event) => setPromptVersion(event.target.value)} placeholder="Örn: meal-intake-v2" className="h-12" />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            <div className="space-y-1 lg:col-span-2">
+              <label htmlFor="publish-reason" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Yayınlama gerekçesi
+              </label>
+              <Input id="publish-reason" value={publishReason} onChange={(event) => setPublishReason(event.target.value)} placeholder="En az 10 karakter" className="h-12" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="publish-confirm" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Onay metni
+              </label>
+              <Input id="publish-confirm" value={publishConfirm} onChange={(event) => setPublishConfirm(event.target.value)} placeholder="ONAYLA" className="h-12" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="four-eyes" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              İkinci onay e-postası (opsiyonel)
+            </label>
+            <Input
+              id="four-eyes"
+              value={fourEyesApproverEmail}
+              onChange={(event) => setFourEyesApproverEmail(event.target.value)}
+              placeholder="Aktif SUPER_ADMIN / OWNER e-posta adresi"
+              className="h-12"
+            />
+          </div>
+        </div>
+
+        <aside className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 lg:sticky lg:top-24">
+          <h3 className="text-base font-semibold text-slate-900">Hızlı İşlemler</h3>
+          <div className="flex flex-col gap-2">
+            <Button variant="secondary" size="md" disabled={!canSubmit || !isTemperatureValid || testing || submitting || !canWrite} onClick={testSettings}>
+              {testing ? 'Test ediliyor...' : 'Kaydetmeden önce test et'}
+            </Button>
+            <Button variant="ghost" size="md" disabled={!canSubmit || testing || submitting || rollingBack} onClick={saveDraft}>
+              Taslağı kaydet
+            </Button>
+            <Button variant="secondary" size="md" disabled={testing || submitting || rollingBack} onClick={loadDraft}>
+              Taslağı yükle
+            </Button>
+            <Button
+              size="md"
+              disabled={
+                !canSubmit ||
+                !isTemperatureValid ||
+                !canWrite ||
+                publishReason.trim().length < 10 ||
+                publishConfirm.trim().toUpperCase() !== 'ONAYLA' ||
+                submitting ||
+                testing ||
+                rollingBack
+              }
+              onClick={saveSettings}
+            >
+              {submitting ? 'Yayınlanıyor...' : 'Yayınla'}
+            </Button>
+            <Input
+              value={rollbackConfirm}
+              onChange={(event) => setRollbackConfirm(event.target.value)}
+              placeholder="Geri alma için GERI_AL yazın"
+              className="h-12"
+            />
+            <Button
+              variant="ghost"
+              size="md"
+              disabled={submitting || testing || rollingBack || !canWrite || rollbackConfirm.trim().toUpperCase() !== 'GERI_AL'}
+              onClick={rollbackSettings}
+            >
+              {rollingBack ? 'Geri alınıyor...' : 'Önceki sürüme dön'}
+            </Button>
+          </div>
+        </aside>
+      </div>
 
       {config ? (
         <div className="space-y-1 text-sm text-slate-600">
@@ -306,18 +403,25 @@ export function PromptStudioPanel() {
             Aktif sürüm: v{config.version}. Son yayınlayan: {config.lastPublishedBy ?? 'bilinmiyor'}.
           </p>
           <p>
-            OpenAI API Key: <strong>{openAiApiKeyStatus}</strong>
+            OpenAI anahtar durumu: <strong>{openAiApiKeyStatus === 'tanimli' ? 'Tanımlı' : 'Tanımlı değil'}</strong>
           </p>
         </div>
       ) : null}
 
       {error ? <StatePanel variant="error" title="İşlem hatası" description={error} /> : null}
       {info ? <StatePanel variant="success" title="İşlem sonucu" description={info} /> : null}
-      {draftSavedAt ? <p className="text-xs text-slate-500">Son draft kaydı: {new Date(draftSavedAt).toLocaleString('tr-TR')}</p> : null}
+      {!canWrite ? (
+        <StatePanel
+          variant="empty"
+          title="Yazma yetkiniz yok"
+          description="Test, yayın ve geri alma işlemleri için SUPER_ADMIN veya OWNER rolü gerekir."
+        />
+      ) : null}
+      {draftSavedAt ? <p className="text-xs text-slate-500">Son taslak kaydı: {new Date(draftSavedAt).toLocaleString('tr-TR')}</p> : null}
 
       {diffRows.length > 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-4">
-          <h3 className="text-base font-semibold text-slate-900">Diff viewer (vN vs vN-1)</h3>
+          <h3 className="text-base font-semibold text-slate-900">Sürüm farkı (güncel vs önceki)</h3>
           <ul className="mt-3 space-y-2 text-sm">
             {diffRows.map((row) => (
               <li key={row.key} className="rounded-2xl border border-slate-100 px-3 py-2 text-slate-700">
@@ -331,7 +435,7 @@ export function PromptStudioPanel() {
 
       {smokeChecks.length > 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-4">
-          <h3 className="text-base font-semibold text-slate-900">Publish sonrası smoke test</h3>
+          <h3 className="text-base font-semibold text-slate-900">Yayın sonrası doğrulama</h3>
           <ul className="mt-2 space-y-1 text-sm text-slate-700">
             {smokeChecks.map((check) => (
               <li key={check.step}>

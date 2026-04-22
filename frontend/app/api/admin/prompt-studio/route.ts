@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/db/prisma';
 import { getJsonBody } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
-import { requireAdmin } from '@/lib/auth/admin';
+import { isSuperAdminRole, requireAdmin, requireSuperAdmin } from '@/lib/auth/admin';
 import { getServerEnv } from '@/lib/env';
 import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
 import { withAdminWriteProtection, withCsrfToken } from '@/lib/security/admin-write-guard';
@@ -12,13 +12,14 @@ import { withAdminWriteProtection, withCsrfToken } from '@/lib/security/admin-wr
 const promptStudioSchema = z.object({
   provider: z.string().trim().min(1).max(64),
   model: z.string().trim().min(1).max(128),
+  temperature: z.coerce.number().min(0).max(2).default(0.2),
   promptVersion: z.string().trim().min(1).max(64),
 });
 
 const promptStudioPublishSchema = promptStudioSchema.and(sensitiveActionSchema);
 
 type PromptStudioDraftInput = z.infer<typeof promptStudioSchema>;
-type SecretStatus = 'configured' | 'not configured';
+type SecretStatus = 'tanimli' | 'tanimli_degil';
 
 const promptVersionPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
@@ -47,6 +48,7 @@ async function loadCurrentPromptStudioConfig() {
   return {
     provider: (rowMap.get('provider')?.valueJson as { provider?: string } | null)?.provider ?? 'openai',
     model: (rowMap.get('mealModel')?.valueJson as { model?: string } | null)?.model ?? 'gpt-4.1-mini',
+    temperature: (rowMap.get('mealModel')?.valueJson as { temperature?: number } | null)?.temperature ?? 0.2,
     promptVersion:
       (rowMap.get('analysisPromptVersion')?.valueJson as { version?: string } | null)?.version ?? 'meal-intake-v1',
     version: Math.max(...rows.map((row) => row.version), 1),
@@ -87,16 +89,20 @@ function validatePromptStudioInput(input: PromptStudioDraftInput) {
   }
 
   if (!promptVersionPattern.test(input.promptVersion)) {
-    issues.push('Prompt version yalnızca küçük harf, rakam ve ._- ayraçları içerebilir.');
+    issues.push('İstem sürümü yalnızca küçük harf, rakam ve ._- ayraçları içerebilir.');
   }
 
   if (!input.promptVersion.includes('-v')) {
-    issues.push("Prompt version içinde sürüm eki bekleniyor (örn: 'meal-intake-v3').");
+    issues.push("İstem sürümü içinde sürüm eki bekleniyor (örn: 'meal-intake-v3').");
+  }
+
+  if (input.temperature < 0 || input.temperature > 2) {
+    issues.push('Sıcaklık değeri 0 ile 2 arasında olmalıdır.');
   }
 
   const hasPlaceholder = /\{\{\s*input\s*\}\}/.test(input.promptVersion);
   if (hasPlaceholder) {
-    issues.push('Prompt version içinde template placeholder kullanılmamalı.');
+    issues.push('İstem sürümü içinde template placeholder kullanılmamalı.');
   }
 
   return {
@@ -110,12 +116,20 @@ async function runPromptStudioSmokeTest(expected: PromptStudioDraftInput) {
   const checks = [
     {
       step: 'published_values_match',
-      ok: latest.provider === expected.provider && latest.model === expected.model && latest.promptVersion === expected.promptVersion,
+      ok:
+        latest.provider === expected.provider &&
+        latest.model === expected.model &&
+        latest.temperature === expected.temperature &&
+        latest.promptVersion === expected.promptVersion,
       detail: 'Yayınlanan değerler geri okunup karşılaştırıldı.',
     },
     {
       step: 'non_empty_effective_values',
-      ok: latest.provider.trim().length > 0 && latest.model.trim().length > 0 && latest.promptVersion.trim().length > 0,
+      ok:
+        latest.provider.trim().length > 0 &&
+        latest.model.trim().length > 0 &&
+        latest.promptVersion.trim().length > 0 &&
+        Number.isFinite(latest.temperature),
       detail: 'Etkin provider/model/promptVersion boş değil.',
     },
   ];
@@ -142,14 +156,18 @@ export async function GET(request: Request) {
       : null;
 
   const secretStatus: { openaiApiKey: SecretStatus } = {
-    openaiApiKey: env.OPENAI_API_KEY ? 'configured' : 'not configured',
+    openaiApiKey: env.OPENAI_API_KEY ? 'tanimli' : 'tanimli_degil',
   };
 
-  return withCsrfToken(request, { ok: true, config, previousConfig, changes, secretStatus }, { status: 200 });
+  return withCsrfToken(
+    request,
+    { ok: true, config, previousConfig, changes, secretStatus, permissions: { canWrite: isSuperAdminRole(guard.user.role) } },
+    { status: 200 },
+  );
 }
 
 export async function POST(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireSuperAdmin();
 
   if (!guard.ok) {
     return guard.response;
@@ -159,7 +177,7 @@ export async function POST(request: Request) {
     const parsed = promptStudioSchema.safeParse(await getJsonBody(request));
 
     if (!parsed.success) {
-      return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ message: 'Geçersiz istem ayarları.', issues: parsed.error.flatten() }, { status: 400 });
     }
 
     const env = getServerEnv();
@@ -167,7 +185,7 @@ export async function POST(request: Request) {
     const contentValidation = validatePromptStudioInput(parsed.data);
 
     if (!contentValidation.ok) {
-      return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', warnings: contentValidation.issues }, { status: 400 });
+      return NextResponse.json({ message: 'İstem doğrulaması başarısız oldu.', warnings: contentValidation.issues }, { status: 400 });
     }
 
     if (parsed.data.provider.toLowerCase() === 'openai' && !env.OPENAI_API_KEY) {
@@ -175,14 +193,14 @@ export async function POST(request: Request) {
     }
 
     await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'prompt_studio_tested',
-    resourceType: 'app_meta',
-    resourceKey: 'ai.promptStudio',
-    beforeJson: Prisma.JsonNull,
-    afterJson: toJsonValue({ ...parsed.data, warnings }),
-    request,
-  });
+      actorId: guard.user.id,
+      action: 'prompt_studio_tested',
+      resourceType: 'app_meta',
+      resourceKey: 'ai.promptStudio',
+      beforeJson: Prisma.JsonNull,
+      afterJson: toJsonValue({ ...parsed.data, warnings }),
+      request,
+    });
 
     return NextResponse.json(
       {
@@ -196,7 +214,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireSuperAdmin();
 
   if (!guard.ok) {
     return guard.response;
@@ -206,9 +224,8 @@ export async function PUT(request: Request) {
     const parsed = promptStudioPublishSchema.safeParse(await getJsonBody(request));
 
     if (!parsed.success) {
-      return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ message: 'Geçersiz istem ayarları.', issues: parsed.error.flatten() }, { status: 400 });
     }
-
 
     let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
 
@@ -223,7 +240,7 @@ export async function PUT(request: Request) {
 
     const contentValidation = validatePromptStudioInput(parsed.data);
     if (!contentValidation.ok) {
-      return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', issues: contentValidation.issues }, { status: 400 });
+      return NextResponse.json({ message: 'İstem doğrulaması başarısız oldu.', issues: contentValidation.issues }, { status: 400 });
     }
 
     const current = await loadCurrentPromptStudioConfig();
@@ -231,81 +248,82 @@ export async function PUT(request: Request) {
     const publishedAt = new Date();
 
     await prisma.$transaction([
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'provider' } },
-      update: {
-        valueJson: toJsonValue({ provider: parsed.data.provider }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'provider',
-        valueJson: toJsonValue({ provider: parsed.data.provider }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'mealModel' } },
-      update: {
-        valueJson: toJsonValue({ model: parsed.data.model, temperature: 0.2 }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'mealModel',
-        valueJson: toJsonValue({ model: parsed.data.model, temperature: 0.2 }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'analysisPromptVersion' } },
-      update: {
-        valueJson: toJsonValue({ version: parsed.data.promptVersion }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'analysisPromptVersion',
-        valueJson: toJsonValue({ version: parsed.data.promptVersion }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'provider' } },
+        update: {
+          valueJson: toJsonValue({ provider: parsed.data.provider }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'provider',
+          valueJson: toJsonValue({ provider: parsed.data.provider }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'mealModel' } },
+        update: {
+          valueJson: toJsonValue({ model: parsed.data.model, temperature: parsed.data.temperature }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'mealModel',
+          valueJson: toJsonValue({ model: parsed.data.model, temperature: parsed.data.temperature }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'analysisPromptVersion' } },
+        update: {
+          valueJson: toJsonValue({ version: parsed.data.promptVersion }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'analysisPromptVersion',
+          valueJson: toJsonValue({ version: parsed.data.promptVersion }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
     ]);
 
     await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'prompt_studio_updated',
-    resourceType: 'app_meta',
-    resourceKey: 'ai.promptStudio',
-    beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({
-      provider: parsed.data.provider,
-      model: parsed.data.model,
-      promptVersion: parsed.data.promptVersion,
-      version: nextVersion,
-      reason: parsed.data.reason,
-      fourEyesApprovedBy: fourEyesApproval.approverEmail,
-    }),
-    request,
-  });
+      actorId: guard.user.id,
+      action: 'prompt_studio_updated',
+      resourceType: 'app_meta',
+      resourceKey: 'ai.promptStudio',
+      beforeJson: toJsonValue(current),
+      afterJson: toJsonValue({
+        provider: parsed.data.provider,
+        model: parsed.data.model,
+        temperature: parsed.data.temperature,
+        promptVersion: parsed.data.promptVersion,
+        version: nextVersion,
+        reason: parsed.data.reason,
+        fourEyesApprovedBy: fourEyesApproval.approverEmail,
+      }),
+      request,
+    });
 
     const smokeTest = await runPromptStudioSmokeTest(parsed.data);
 
@@ -314,7 +332,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireSuperAdmin();
 
   if (!guard.ok) {
     return guard.response;
@@ -322,15 +340,15 @@ export async function DELETE(request: Request) {
 
   return withAdminWriteProtection(request, guard.user.id, async () => {
     const latestUpdate = await prisma.adminAuditLog.findFirst({
-    where: {
-      resourceType: 'app_meta',
-      resourceKey: 'ai.promptStudio',
-      action: 'prompt_studio_updated',
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-  });
+      where: {
+        resourceType: 'app_meta',
+        resourceKey: 'ai.promptStudio',
+        action: 'prompt_studio_updated',
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
     if (!latestUpdate?.beforeJson || typeof latestUpdate.beforeJson !== 'object') {
       return NextResponse.json({ message: 'Rollback için uygun önceki sürüm bulunamadı.' }, { status: 400 });
@@ -346,74 +364,74 @@ export async function DELETE(request: Request) {
     const publishedAt = new Date();
 
     await prisma.$transaction([
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'provider' } },
-      update: {
-        valueJson: toJsonValue({ provider: rollbackTarget.data.provider }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'provider',
-        valueJson: toJsonValue({ provider: rollbackTarget.data.provider }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'mealModel' } },
-      update: {
-        valueJson: toJsonValue({ model: rollbackTarget.data.model, temperature: 0.2 }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'mealModel',
-        valueJson: toJsonValue({ model: rollbackTarget.data.model, temperature: 0.2 }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
-    prisma.appMeta.upsert({
-      where: { namespace_key: { namespace: 'ai', key: 'analysisPromptVersion' } },
-      update: {
-        valueJson: toJsonValue({ version: rollbackTarget.data.promptVersion }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-      create: {
-        namespace: 'ai',
-        key: 'analysisPromptVersion',
-        valueJson: toJsonValue({ version: rollbackTarget.data.promptVersion }),
-        valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
-        version: nextVersion,
-        publishedAt,
-        publishedBy: guard.user.id,
-      },
-    }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'provider' } },
+        update: {
+          valueJson: toJsonValue({ provider: rollbackTarget.data.provider }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'provider',
+          valueJson: toJsonValue({ provider: rollbackTarget.data.provider }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['provider'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'mealModel' } },
+        update: {
+          valueJson: toJsonValue({ model: rollbackTarget.data.model, temperature: rollbackTarget.data.temperature }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'mealModel',
+          valueJson: toJsonValue({ model: rollbackTarget.data.model, temperature: rollbackTarget.data.temperature }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['model', 'temperature'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
+      prisma.appMeta.upsert({
+        where: { namespace_key: { namespace: 'ai', key: 'analysisPromptVersion' } },
+        update: {
+          valueJson: toJsonValue({ version: rollbackTarget.data.promptVersion }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+        create: {
+          namespace: 'ai',
+          key: 'analysisPromptVersion',
+          valueJson: toJsonValue({ version: rollbackTarget.data.promptVersion }),
+          valueSchemaJson: toJsonValue({ type: 'object', required: ['version'] }),
+          version: nextVersion,
+          publishedAt,
+          publishedBy: guard.user.id,
+        },
+      }),
     ]);
 
     await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'prompt_studio_rollback',
-    resourceType: 'app_meta',
-    resourceKey: 'ai.promptStudio',
-    beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({ ...rollbackTarget.data, version: nextVersion }),
-    request,
-  });
+      actorId: guard.user.id,
+      action: 'prompt_studio_rollback',
+      resourceType: 'app_meta',
+      resourceKey: 'ai.promptStudio',
+      beforeJson: toJsonValue(current),
+      afterJson: toJsonValue({ ...rollbackTarget.data, version: nextVersion }),
+      request,
+    });
 
     return NextResponse.json({ ok: true, version: nextVersion, restored: rollbackTarget.data }, { status: 200 });
   });

@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
 import { StatusPill } from '@/components/ui/status-pill';
+import { AdminModuleHeader } from '@/components/admin/admin-module-header';
 
 type AuditLog = {
   id: string;
@@ -132,11 +132,11 @@ export function AuditLogsPanel() {
 
       if (!response.ok) {
         const message = 'message' in payload ? payload.message : undefined;
-        throw new Error(message ?? 'Audit log listesi alınamadı.');
+        throw new Error(message ?? 'Denetim kaydı listesi alınamadı.');
       }
 
       if (!('logs' in payload)) {
-        throw new Error('Audit log listesi formatı geçersiz.');
+        throw new Error('Denetim kaydı biçimi geçersiz.');
       }
 
       setLogs(payload.logs);
@@ -203,91 +203,119 @@ export function AuditLogsPanel() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-5">
-        <Input value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} placeholder="Actor e-posta filtresi" className="h-12 md:col-span-2" />
-        <Input value={resourceFilter} onChange={(event) => setResourceFilter(event.target.value)} placeholder="Resource type filtresi" className="h-12" />
-        <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-12" />
-        <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-12" />
+      <AdminModuleHeader
+        title="Değişiklik Geçmişi"
+        description="Yönetim panelinde yapılan işlemleri tarih, kullanıcı ve kaynak bazında izlersiniz."
+        hint="Desktop görünümde bir kaydı seçtiğinizde sağ panelde önce/sonra farkı açılır."
+      />
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-4 lg:p-5">
+        <div className="grid gap-3 lg:grid-cols-6 lg:items-end">
+          <div className="space-y-1 lg:col-span-2">
+            <label htmlFor="audit-actor" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              İşlemi yapan
+            </label>
+            <Input id="audit-actor" value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} placeholder="E-posta ile filtrele" className="h-12" />
+          </div>
+          <div className="space-y-1 lg:col-span-2">
+            <label htmlFor="audit-resource" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Kaynak tipi
+            </label>
+            <Input id="audit-resource" value={resourceFilter} onChange={(event) => setResourceFilter(event.target.value)} placeholder="Örn: app_meta" className="h-12" />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="audit-date-from" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Başlangıç
+            </label>
+            <Input id="audit-date-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-12" />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="audit-date-to" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Bitiş
+            </label>
+            <Input id="audit-date-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-12" />
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={fetchLogs}>
+            Filtreyi uygula
+          </Button>
+          <Button variant="ghost" onClick={exportCsv}>
+            CSV dışa aktar
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={fetchLogs}>
-          Filtreyi uygula
-        </Button>
-        <Button variant="ghost" onClick={exportCsv}>
-          CSV export (opsiyonel)
-        </Button>
-      </div>
-
-      {loading ? <StatePanel variant="loading" title="Audit logs yükleniyor" description="Kayıtlar hazırlanıyor..." /> : null}
+      {loading ? <StatePanel variant="loading" title="Değişiklik kayıtları yükleniyor" description="Kayıtlar hazırlanıyor..." /> : null}
       {error ? <StatePanel variant="error" title="İşlem hatası" description={error} /> : null}
 
       {!loading && !error && logs.length === 0 ? (
-        <StatePanel variant="empty" title="Audit kaydı bulunamadı" description="Actor/resource/date filtrelerini kontrol edip tekrar deneyin." />
+        <StatePanel variant="empty" title="Kayıt bulunamadı" description="Kullanıcı/kaynak/tarih filtrelerini kontrol edip tekrar deneyin." />
       ) : null}
 
       {!loading && !error && logs.length > 0 ? (
-        <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Tarih</th>
-                <th className="px-4 py-3">Actor</th>
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Resource</th>
-                <th className="px-4 py-3">Detay</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td className="px-4 py-3 text-slate-700">{new Date(log.createdAt).toLocaleString('tr-TR')}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{log.actor.email}</div>
-                    <div className="text-xs text-slate-500">{log.actor.role}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusPill tone="neutral">{log.action}</StatusPill>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    <div>{log.resourceType}</div>
-                    <div className="text-xs text-slate-500">{log.resourceKey}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Button size="sm" variant="secondary" onClick={() => setSelectedLog(log)}>
-                      Before/After diff
-                    </Button>
-                  </td>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Tarih</th>
+                  <th className="px-4 py-3">İşlemi Yapan</th>
+                  <th className="px-4 py-3">İşlem</th>
+                  <th className="px-4 py-3">Kaynak</th>
+                  <th className="px-4 py-3">Detay</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {logs.map((log) => (
+                  <tr key={log.id} className={selectedLog?.id === log.id ? 'bg-cyan-50/50' : undefined}>
+                    <td className="px-4 py-3 text-slate-700">{new Date(log.createdAt).toLocaleString('tr-TR')}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-900">{log.actor.email}</div>
+                      <div className="text-xs text-slate-500">{log.actor.role}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusPill tone="neutral">{log.action}</StatusPill>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <div>{log.resourceType}</div>
+                      <div className="text-xs text-slate-500">{log.resourceKey}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button size="sm" variant="secondary" onClick={() => setSelectedLog(log)}>
+                        Farkı göster
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <aside className="rounded-3xl border border-slate-200 bg-white p-4 lg:sticky lg:top-24">
+            <h3 className="text-base font-semibold text-slate-900">Kayıt detayı</h3>
+            {!selectedLog ? (
+              <p className="mt-2 text-sm text-slate-600">Tablodan bir kayıt seçerek önce/sonra farkını bu alanda görüntüleyin.</p>
+            ) : diffRows.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600">Bu kayıt için karşılaştırılacak önce/sonra alanı yok.</p>
+            ) : (
+              <ul className="mt-3 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                {diffRows.map((row) => (
+                  <li key={row.path} className="rounded-2xl border border-slate-200 p-3 text-sm">
+                    <div className="font-semibold text-slate-900">{row.path}</div>
+                    <div className="mt-1 text-slate-600">önce: {row.beforeValue}</div>
+                    <div className="text-slate-700">sonra: {row.afterValue}</div>
+                    <div className={`mt-1 text-xs font-semibold ${row.changed ? 'text-amber-700' : 'text-slate-500'}`}>
+                      {row.changed ? 'değişti' : 'aynı'}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
         </div>
       ) : null}
-
-      <BottomSheet
-        open={Boolean(selectedLog)}
-        onClose={() => setSelectedLog(null)}
-        title="Detay modalı"
-        description={selectedLog ? `${selectedLog.action} · ${selectedLog.resourceType}` : undefined}
-      >
-        {diffRows.length === 0 ? (
-          <p className="text-sm text-slate-600">Bu kayıt için karşılaştırılacak before/after alanı yok.</p>
-        ) : (
-          <ul className="space-y-2">
-            {diffRows.map((row) => (
-              <li key={row.path} className="rounded-2xl border border-slate-200 p-3 text-sm">
-                <div className="font-semibold text-slate-900">{row.path}</div>
-                <div className="mt-1 text-slate-600">before: {row.beforeValue}</div>
-                <div className="text-slate-700">after: {row.afterValue}</div>
-                <div className={`mt-1 text-xs font-semibold ${row.changed ? 'text-amber-700' : 'text-slate-500'}`}>
-                  {row.changed ? 'değişti' : 'aynı'}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </BottomSheet>
     </div>
   );
 }
