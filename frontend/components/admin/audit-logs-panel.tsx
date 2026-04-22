@@ -135,6 +135,10 @@ export function AuditLogsPanel() {
         throw new Error(message ?? 'Audit log listesi alınamadı.');
       }
 
+      if (!('logs' in payload)) {
+        throw new Error('Audit log listesi formatı geçersiz.');
+      }
+
       setLogs(payload.logs);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
