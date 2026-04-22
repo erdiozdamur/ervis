@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { UserRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/db/prisma';
-import { getJsonBody, getSearchParamsObject } from '@/lib/api/validation';
+import { getJsonBody } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
 import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
+import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
 
 const updateRoleParamsSchema = z.object({
   userId: z.string().trim().min(1),
@@ -13,11 +14,7 @@ const updateRoleParamsSchema = z.object({
 
 const updateRoleBodySchema = z.object({
   role: z.nativeEnum(UserRole),
-});
-
-const updateRoleQuerySchema = z.object({
-  reason: z.string().trim().min(1).max(255).optional(),
-});
+}).and(sensitiveActionSchema);
 
 type RouteContext = {
   params: {
@@ -41,14 +38,6 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const parsedQuery = updateRoleQuerySchema.safeParse(getSearchParamsObject(request));
-
-  if (!parsedQuery.success) {
-    return NextResponse.json(
-      { message: 'Geçersiz sorgu parametreleri.', issues: parsedQuery.error.flatten() },
-      { status: 400 },
-    );
-  }
 
   const parsedBody = updateRoleBodySchema.safeParse(await getJsonBody(request));
 
@@ -98,6 +87,18 @@ export async function PUT(request: Request, context: RouteContext) {
     }
   }
 
+
+  let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
+
+  try {
+    fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsedBody.data.fourEyesApproverEmail);
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
+      { status: 400 },
+    );
+  }
+
   const updatedUser = await prisma.user.update({
     where: { id: target.id },
     data: { role: parsedBody.data.role },
@@ -118,7 +119,8 @@ export async function PUT(request: Request, context: RouteContext) {
     beforeJson: { role: target.role },
     afterJson: {
       role: updatedUser.role,
-      reason: parsedQuery.data.reason ?? null,
+      reason: parsedBody.data.reason,
+      fourEyesApprovedBy: fourEyesApproval.approverEmail,
     },
     request,
   });

@@ -49,6 +49,9 @@ export function PromptStudioPanel() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [smokeChecks, setSmokeChecks] = useState<Array<{ step: string; ok: boolean; detail: string }>>([]);
+  const [publishReason, setPublishReason] = useState('');
+  const [publishConfirm, setPublishConfirm] = useState('');
+  const [fourEyesApproverEmail, setFourEyesApproverEmail] = useState('');
   const [openAiApiKeyStatus, setOpenAiApiKeyStatus] = useState<'configured' | 'not configured'>('not configured');
 
   const fetchState = useCallback(async () => {
@@ -154,7 +157,7 @@ export function PromptStudioPanel() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ provider, model, promptVersion }),
+        body: JSON.stringify({ provider, model, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
       });
 
       const payload = (await response.json()) as { message?: string; warnings?: string[] };
@@ -202,6 +205,9 @@ export function PromptStudioPanel() {
 
       setInfo(`Prompt ayarları kaydedildi. Yeni sürüm: v${payload.version ?? '?'}.`);
       setSmokeChecks(payload.smokeTest?.checks ?? []);
+      setPublishReason('');
+      setPublishConfirm('');
+      setFourEyesApproverEmail('');
       await fetchState();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Kaydetme başarısız oldu.');
@@ -261,13 +267,33 @@ export function PromptStudioPanel() {
         <Button variant="secondary" size="md" disabled={testing || submitting || rollingBack} onClick={loadDraft}>
           Draft yükle
         </Button>
-        <Button size="md" disabled={!canSubmit || submitting || testing || rollingBack} onClick={saveSettings}>
+        <Button
+          size="md"
+          disabled={!canSubmit || publishReason.trim().length < 10 || publishConfirm.trim().toUpperCase() !== 'ONAYLA' || submitting || testing || rollingBack}
+          onClick={saveSettings}
+        >
           {submitting ? 'Yayınlanıyor...' : 'Publish'}
         </Button>
         <Button variant="ghost" size="md" disabled={submitting || testing || rollingBack} onClick={rollbackSettings}>
           {rollingBack ? 'Rollback...' : 'Rollback'}
         </Button>
       </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Input
+          value={publishReason}
+          onChange={(event) => setPublishReason(event.target.value)}
+          placeholder="Publish gerekçesi (zorunlu, min 10 karakter)"
+          className="h-12 md:col-span-2"
+        />
+        <Input value={publishConfirm} onChange={(event) => setPublishConfirm(event.target.value)} placeholder="ONAYLA" className="h-12" />
+      </div>
+      <Input
+        value={fourEyesApproverEmail}
+        onChange={(event) => setFourEyesApproverEmail(event.target.value)}
+        placeholder="4-eyes için SUPER_ADMIN e-posta (opsiyonel)"
+        className="h-12"
+      />
 
       {config ? (
         <div className="space-y-1 text-sm text-slate-600">

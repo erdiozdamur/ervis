@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/db/prisma';
-import { getJsonBody, getSearchParamsObject } from '@/lib/api/validation';
+import { getJsonBody } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
 import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
+import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
 
 const updateStatusParamsSchema = z.object({
   userId: z.string().trim().min(1),
@@ -12,11 +13,7 @@ const updateStatusParamsSchema = z.object({
 
 const updateStatusBodySchema = z.object({
   isActive: z.boolean(),
-});
-
-const updateStatusQuerySchema = z.object({
-  reason: z.string().trim().min(1).max(255).optional(),
-});
+}).and(sensitiveActionSchema);
 
 type RouteContext = {
   params: {
@@ -40,14 +37,6 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const parsedQuery = updateStatusQuerySchema.safeParse(getSearchParamsObject(request));
-
-  if (!parsedQuery.success) {
-    return NextResponse.json(
-      { message: 'Geçersiz sorgu parametreleri.', issues: parsedQuery.error.flatten() },
-      { status: 400 },
-    );
-  }
 
   const parsedBody = updateStatusBodySchema.safeParse(await getJsonBody(request));
 
@@ -88,6 +77,18 @@ export async function PUT(request: Request, context: RouteContext) {
     }
   }
 
+
+  let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
+
+  try {
+    fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsedBody.data.fourEyesApproverEmail);
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
+      { status: 400 },
+    );
+  }
+
   const updatedUser = await prisma.user.update({
     where: { id: target.id },
     data: { isActive: parsedBody.data.isActive },
@@ -108,7 +109,8 @@ export async function PUT(request: Request, context: RouteContext) {
     beforeJson: { isActive: target.isActive },
     afterJson: {
       isActive: updatedUser.isActive,
-      reason: parsedQuery.data.reason ?? null,
+      reason: parsedBody.data.reason,
+      fourEyesApprovedBy: fourEyesApproval.approverEmail,
     },
     request,
   });
