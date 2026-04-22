@@ -39,14 +39,32 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.sub = user.id;
         const emailVerified =
           'emailVerified' in user && user.emailVerified instanceof Date ? user.emailVerified.toISOString() : null;
         const role = 'role' in user && typeof user.role === 'string' ? (user.role as UserRole) : 'USER';
+        const isActive = 'isActive' in user ? Boolean(user.isActive) : true;
         token.emailVerified = emailVerified;
         token.role = role;
+        token.isActive = isActive;
+      }
+
+
+
+      if (token.sub) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.sub },
+          select: { role: true, isActive: true },
+        });
+
+        if (dbUser) {
+          token.role = dbUser.role;
+          token.isActive = dbUser.isActive;
+        } else {
+          token.isActive = false;
+        }
       }
 
       return token;
@@ -56,6 +74,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub ?? session.user.id;
         session.user.emailVerified = typeof token.emailVerified === 'string' ? token.emailVerified : null;
         session.user.role = token.role ?? 'USER';
+        session.user.isActive = token.isActive ?? true;
       }
 
       return session;

@@ -4,6 +4,7 @@ import { ScreenHeader } from '@/components/layout/screen-header';
 import { Stack } from '@/components/layout/stack';
 import { buttonStyles } from '@/components/ui/button';
 import { StatePanel } from '@/components/ui/state-panel';
+import { UsersAdminPanel } from '@/components/admin/users-admin-panel';
 import { isAdminRole } from '@/lib/auth/admin';
 import { requireCurrentUser } from '@/lib/auth/session';
 import { cn } from '@/lib/utils/cn';
@@ -71,11 +72,15 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         })}
       </nav>
 
-      <StatePanel
-        variant="empty"
-        title={`${selectedLabel} is ready for implementation`}
-        description="This tab is scaffolded. Empty, loading, and error states now follow one shared admin pattern until live data flows are added."
-      />
+      {selectedTab === 'users' ? (
+        <UsersAdminPanel />
+      ) : (
+        <StatePanel
+          variant="empty"
+          title={`${selectedLabel} is ready for implementation`}
+          description="This tab is scaffolded. Empty, loading, and error states now follow one shared admin pattern until live data flows are added."
+        />
+      )}
     </Stack>
   );
 }
