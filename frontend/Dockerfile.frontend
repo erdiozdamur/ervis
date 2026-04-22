@@ -12,6 +12,9 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Defensive cleanup: previous deployments may leave stale route files that
+# can cause Next.js "parallel pages resolve to the same path" build errors.
+RUN rm -f "app/(admin)/app/admin/page.tsx" "app/(admin)/app/admin/layout.tsx"
 RUN npx prisma generate
 RUN npm run build
 
