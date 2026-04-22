@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       where: {
         isActive: true,
         role: {
-          in: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
+          in: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.OWNER],
         },
       },
     }),
