@@ -1,29 +1,8 @@
 export default function AdminPage() {
   const users = [
-    {
-      id: 'USR-1041',
-      name: 'Ayşe Yılmaz',
-      email: 'ayse.yilmaz@ervis.ai',
-      role: 'Admin',
-      status: 'Aktif',
-      lastSeen: '22 Nis 2026, 09:42',
-    },
-    {
-      id: 'USR-2118',
-      name: 'Mert Aydın',
-      email: 'mert.aydin@ervis.ai',
-      role: 'Editör',
-      status: 'Aktif',
-      lastSeen: '22 Nis 2026, 08:16',
-    },
-    {
-      id: 'USR-3082',
-      name: 'Zeynep Demir',
-      email: 'zeynep.demir@ervis.ai',
-      role: 'Operasyon',
-      status: 'Pasif',
-      lastSeen: '20 Nis 2026, 17:02',
-    },
+    { id: 'USR-1041', name: 'Ayşe Yılmaz', email: 'ayse.yilmaz@ervis.ai', role: 'Admin', status: 'Aktif', lastSeen: '22 Nis 2026, 09:42' },
+    { id: 'USR-2118', name: 'Mert Aydın', email: 'mert.aydin@ervis.ai', role: 'Editör', status: 'Aktif', lastSeen: '22 Nis 2026, 08:16' },
+    { id: 'USR-3082', name: 'Zeynep Demir', email: 'zeynep.demir@ervis.ai', role: 'Operasyon', status: 'Pasif', lastSeen: '20 Nis 2026, 17:02' },
   ];
 
   const prompts = [
@@ -54,58 +33,44 @@ export default function AdminPage() {
   ];
 
   return (
-    <main className="mx-auto w-full max-w-[1600px] px-10 py-8">
-      <header className="mb-8 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Admin Paneli</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Sistem Yönetim Merkezi</h1>
-        <p className="mt-2 max-w-4xl text-sm text-slate-600">
-          Bu ekran masaüstü kullanım önceliğiyle tasarlandı. Kullanıcı yönetimi ve AI agent prompt yönetimi işlemleri tek
-          noktadan yönetilir.
-        </p>
-      </header>
+    <div className="relative left-1/2 w-screen max-w-none -translate-x-1/2 px-8 pb-8">
+      <main className="mx-auto min-w-[1240px] max-w-[1800px] space-y-8">
+        <header className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Admin Paneli</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sistem Yönetim Merkezi</h1>
+          <p className="mt-2 text-sm text-slate-600">Desktop öncelikli bağımsız admin ekranı: kullanıcı yönetimi ve agent prompt yönetimi.</p>
+        </header>
 
-      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm" aria-labelledby="user-management-title">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h2 id="user-management-title" className="text-2xl font-semibold text-slate-900">
-              1) Kullanıcı Yönetimi
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">Kullanıcı listeleme, ekleme, değiştirme ve silme işlemleri.</p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm" aria-labelledby="user-management-title">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 id="user-management-title" className="text-2xl font-semibold text-slate-900">
+                1) Kullanıcı Yönetimi
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">Kullanıcı listeleme, kullanıcı ekleme, kullanıcı değiştirme ve kullanıcı silme.</p>
+            </div>
+            <button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+              + Kullanıcı Ekle
+            </button>
           </div>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            + Kullanıcı Ekle
-          </button>
-        </div>
 
-        <div className="mb-5 grid grid-cols-4 gap-4">
-          <input
-            type="text"
-            placeholder="Ad / Soyad ara"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-300 transition focus:ring-2"
-          />
-          <input
-            type="email"
-            placeholder="E-posta ile ara"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-300 transition focus:ring-2"
-          />
-          <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-300 transition focus:ring-2">
-            <option>Tüm roller</option>
-            <option>Admin</option>
-            <option>Editör</option>
-            <option>Operasyon</option>
-          </select>
-          <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-300 transition focus:ring-2">
-            <option>Tüm durumlar</option>
-            <option>Aktif</option>
-            <option>Pasif</option>
-          </select>
-        </div>
+          <div className="mb-5 grid grid-cols-[1.3fr_1.3fr_1fr_1fr] gap-4">
+            <input type="text" placeholder="Ad / Soyad ara" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <input type="email" placeholder="E-posta ile ara" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+              <option>Tüm roller</option>
+              <option>Admin</option>
+              <option>Editör</option>
+              <option>Operasyon</option>
+            </select>
+            <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+              <option>Tüm durumlar</option>
+              <option>Aktif</option>
+              <option>Pasif</option>
+            </select>
+          </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[1080px] border-collapse bg-white text-left">
+          <table className="w-full border-collapse overflow-hidden rounded-xl border border-slate-200 bg-white text-left">
             <thead className="bg-slate-50">
               <tr>
                 <th className="border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">ID</th>
@@ -125,11 +90,7 @@ export default function AdminPage() {
                   <td className="border-b border-slate-100 px-4 py-3 text-sm text-slate-700">{user.email}</td>
                   <td className="border-b border-slate-100 px-4 py-3 text-sm text-slate-700">{user.role}</td>
                   <td className="border-b border-slate-100 px-4 py-3 text-sm text-slate-700">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
-                        user.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${user.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
                       {user.status}
                     </span>
                   </td>
@@ -146,27 +107,22 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
+        </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm" aria-labelledby="prompt-management-title">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h2 id="prompt-management-title" className="text-2xl font-semibold text-slate-900">
-              2) AI Agent Prompt Yönetimi
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">Sistemdeki tüm araçların kullandığı promptları görüntüleme ve güncelleme alanı.</p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm" aria-labelledby="prompt-management-title">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 id="prompt-management-title" className="text-2xl font-semibold text-slate-900">
+                2) AI Agent Prompt Yönetimi
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">Sistemde bulunan tüm yapay zeka araçlarının/agentların promptlarını listeleme ve değiştirme.</p>
+            </div>
+            <button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+              + Yeni Prompt
+            </button>
           </div>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            + Yeni Prompt
-          </button>
-        </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[1120px] border-collapse bg-white text-left">
+          <table className="w-full border-collapse overflow-hidden rounded-xl border border-slate-200 bg-white text-left">
             <thead className="bg-slate-50">
               <tr>
                 <th className="border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Prompt ID</th>
@@ -196,8 +152,8 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }
