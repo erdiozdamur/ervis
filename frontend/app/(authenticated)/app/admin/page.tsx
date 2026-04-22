@@ -3,6 +3,8 @@ import { prisma } from '@/db/prisma';
 import { getServerEnv } from '@/lib/env';
 import { listAgentPromptConfigs, updateAgentPromptText } from '@/services/ai-agent-prompt-service';
 
+export const dynamic = 'force-dynamic';
+
 function formatDateTime(value: Date | null) {
   if (!value) {
     return '—';
