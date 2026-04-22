@@ -8,11 +8,11 @@ export function isAdminRole(role?: UserRole | null) {
     return false;
   }
 
-  return role === 'ADMIN' || role === 'SUPER_ADMIN';
+  return role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'OWNER';
 }
 
 export function isSuperAdminRole(role?: UserRole | null) {
-  return role === 'SUPER_ADMIN';
+  return role === 'SUPER_ADMIN' || role === 'OWNER';
 }
 
 type GuardSuccess = {
