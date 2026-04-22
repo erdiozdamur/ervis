@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/db/prisma';
 import { getSearchParamsObject } from '@/lib/api/validation';
 import { isAdminRole, requireAdmin, isSuperAdminRole } from '@/lib/auth/admin';
+import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
 
 const listUsersQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -30,6 +31,8 @@ export async function GET(request: Request) {
   }
 
   const { q, role, status, page, pageSize } = parsedQuery.data;
+
+  const privilegedRoles = await getSupportedPrivilegedRoles();
 
   const where = {
     ...(q
@@ -65,7 +68,7 @@ export async function GET(request: Request) {
       where: {
         isActive: true,
         role: {
-          in: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.OWNER],
+          in: privilegedRoles,
         },
       },
     }),

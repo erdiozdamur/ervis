@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { UserRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/db/prisma';
 import { getJsonBody, getSearchParamsObject } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
+import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
 
 const updateStatusParamsSchema = z.object({
   userId: z.string().trim().min(1),
@@ -67,6 +67,8 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: 'Kullanıcı bulunamadı.' }, { status: 404 });
   }
 
+  const privilegedRoles = await getSupportedPrivilegedRoles();
+
   if (target.id === guard.user.id && target.isActive !== parsedBody.data.isActive) {
     return NextResponse.json({ message: 'Kendi hesabını pasife alamazsın.' }, { status: 409 });
   }
@@ -76,7 +78,7 @@ export async function PUT(request: Request, context: RouteContext) {
       where: {
         isActive: true,
         role: {
-          in: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.OWNER],
+          in: privilegedRoles,
         },
       },
     });
