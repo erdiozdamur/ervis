@@ -5,6 +5,7 @@ import { prisma } from '@/db/prisma';
 import { getJsonBody, getSearchParamsObject } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
+import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
 
 const updateRoleParamsSchema = z.object({
   userId: z.string().trim().min(1),
@@ -79,6 +80,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const targetIsAdmin = isAdminRole(target.role);
+  const privilegedRoles = await getSupportedPrivilegedRoles();
   const nextIsAdmin = isAdminRole(parsedBody.data.role);
 
   if (targetIsAdmin && !nextIsAdmin && target.isActive) {
@@ -86,7 +88,7 @@ export async function PUT(request: Request, context: RouteContext) {
       where: {
         isActive: true,
         role: {
-          in: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.OWNER],
+          in: privilegedRoles,
         },
       },
     });
