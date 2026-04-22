@@ -6,12 +6,15 @@ import { getJsonBody } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { requireAdmin } from '@/lib/auth/admin';
 import { getServerEnv } from '@/lib/env';
+import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
 
 const promptStudioSchema = z.object({
   provider: z.string().trim().min(1).max(64),
   model: z.string().trim().min(1).max(128),
   promptVersion: z.string().trim().min(1).max(64),
 });
+
+const promptStudioPublishSchema = promptStudioSchema.and(sensitiveActionSchema);
 
 type PromptStudioDraftInput = z.infer<typeof promptStudioSchema>;
 type SecretStatus = 'configured' | 'not configured';
@@ -196,10 +199,22 @@ export async function PUT(request: Request) {
     return guard.response;
   }
 
-  const parsed = promptStudioSchema.safeParse(await getJsonBody(request));
+  const parsed = promptStudioPublishSchema.safeParse(await getJsonBody(request));
 
   if (!parsed.success) {
     return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+  }
+
+
+  let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
+
+  try {
+    fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsed.data.fourEyesApproverEmail);
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
+      { status: 400 },
+    );
   }
 
   const contentValidation = validatePromptStudioInput(parsed.data);
@@ -277,7 +292,14 @@ export async function PUT(request: Request) {
     resourceType: 'app_meta',
     resourceKey: 'ai.promptStudio',
     beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({ ...parsed.data, version: nextVersion }),
+    afterJson: toJsonValue({
+      provider: parsed.data.provider,
+      model: parsed.data.model,
+      promptVersion: parsed.data.promptVersion,
+      version: nextVersion,
+      reason: parsed.data.reason,
+      fourEyesApprovedBy: fourEyesApproval.approverEmail,
+    }),
     request,
   });
 

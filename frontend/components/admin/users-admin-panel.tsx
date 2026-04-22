@@ -57,6 +57,7 @@ export function UsersAdminPanel() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [reason, setReason] = useState('');
+  const [fourEyesApproverEmail, setFourEyesApproverEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -120,15 +121,15 @@ export function UsersAdminPanel() {
     setSubmitting(true);
 
     try {
-      const reasonQuery = reason.trim() ? `?reason=${encodeURIComponent(reason.trim())}` : '';
-
       const endpoint =
         pendingAction.kind === 'role'
-          ? `/api/admin/users/${pendingAction.user.id}/role${reasonQuery}`
-          : `/api/admin/users/${pendingAction.user.id}/status${reasonQuery}`;
+          ? `/api/admin/users/${pendingAction.user.id}/role`
+          : `/api/admin/users/${pendingAction.user.id}/status`;
 
       const body =
-        pendingAction.kind === 'role' ? { role: pendingAction.nextRole } : { isActive: pendingAction.nextActive };
+        pendingAction.kind === 'role'
+          ? { role: pendingAction.nextRole, reason, confirm: confirmText, fourEyesApproverEmail }
+          : { isActive: pendingAction.nextActive, reason, confirm: confirmText, fourEyesApproverEmail };
 
       const response = await fetch(endpoint, {
         method: 'PUT',
@@ -147,6 +148,7 @@ export function UsersAdminPanel() {
       setPendingAction(null);
       setConfirmText('');
       setReason('');
+      setFourEyesApproverEmail('');
       await fetchUsers();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'İşlem başarısız oldu.');
@@ -293,9 +295,10 @@ export function UsersAdminPanel() {
           setPendingAction(null);
           setConfirmText('');
           setReason('');
+          setFourEyesApproverEmail('');
         }}
         title={modalTitle}
-        description="İşlemi tamamlamak için ONAYLA yazın."
+        description="İşlemi tamamlamak için gerekçe (min 10 karakter) girip ONAYLA yazın."
         footer={
           <div className="flex gap-2">
             <Button
@@ -305,12 +308,17 @@ export function UsersAdminPanel() {
                 setPendingAction(null);
                 setConfirmText('');
                 setReason('');
+                setFourEyesApproverEmail('');
               }}
               disabled={submitting}
             >
               Vazgeç
             </Button>
-            <Button size="md" onClick={submitAction} disabled={confirmText.trim().toUpperCase() !== 'ONAYLA' || submitting}>
+            <Button
+              size="md"
+              onClick={submitAction}
+              disabled={confirmText.trim().toUpperCase() !== 'ONAYLA' || reason.trim().length < 10 || submitting}
+            >
               {submitting ? 'Kaydediliyor...' : 'Onayla ve uygula'}
             </Button>
           </div>
@@ -333,7 +341,14 @@ export function UsersAdminPanel() {
             <Input
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="Opsiyonel not / gerekçe"
+              placeholder="Gerekçe (zorunlu, min 10 karakter)"
+              className="h-12"
+            />
+
+            <Input
+              value={fourEyesApproverEmail}
+              onChange={(event) => setFourEyesApproverEmail(event.target.value)}
+              placeholder="4-eyes için SUPER_ADMIN e-posta (opsiyonel)"
               className="h-12"
             />
           </div>
