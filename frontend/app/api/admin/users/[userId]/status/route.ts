@@ -6,6 +6,7 @@ import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
 import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
 import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
+import { withAdminWriteProtection } from '@/lib/security/admin-write-guard';
 
 const updateStatusParamsSchema = z.object({
   userId: z.string().trim().min(1),
@@ -28,42 +29,43 @@ export async function PUT(request: Request, context: RouteContext) {
     return guard.response;
   }
 
-  const parsedParams = updateStatusParamsSchema.safeParse(context.params);
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const parsedParams = updateStatusParamsSchema.safeParse(context.params);
 
-  if (!parsedParams.success) {
-    return NextResponse.json(
-      { message: 'Geçersiz kullanıcı kimliği.', issues: parsedParams.error.flatten() },
-      { status: 400 },
-    );
-  }
+    if (!parsedParams.success) {
+      return NextResponse.json(
+        { message: 'Geçersiz kullanıcı kimliği.', issues: parsedParams.error.flatten() },
+        { status: 400 },
+      );
+    }
 
 
-  const parsedBody = updateStatusBodySchema.safeParse(await getJsonBody(request));
+    const parsedBody = updateStatusBodySchema.safeParse(await getJsonBody(request));
 
-  if (!parsedBody.success) {
-    return NextResponse.json(
-      { message: 'Geçersiz istek gövdesi.', issues: parsedBody.error.flatten() },
-      { status: 400 },
-    );
-  }
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { message: 'Geçersiz istek gövdesi.', issues: parsedBody.error.flatten() },
+        { status: 400 },
+      );
+    }
 
-  const target = await prisma.user.findUnique({
+    const target = await prisma.user.findUnique({
     where: { id: parsedParams.data.userId },
     select: { id: true, email: true, role: true, isActive: true },
   });
 
-  if (!target) {
-    return NextResponse.json({ message: 'Kullanıcı bulunamadı.' }, { status: 404 });
-  }
+    if (!target) {
+      return NextResponse.json({ message: 'Kullanıcı bulunamadı.' }, { status: 404 });
+    }
 
-  const privilegedRoles = await getSupportedPrivilegedRoles();
+    const privilegedRoles = await getSupportedPrivilegedRoles();
 
-  if (target.id === guard.user.id && target.isActive !== parsedBody.data.isActive) {
-    return NextResponse.json({ message: 'Kendi hesabını pasife alamazsın.' }, { status: 409 });
-  }
+    if (target.id === guard.user.id && target.isActive !== parsedBody.data.isActive) {
+      return NextResponse.json({ message: 'Kendi hesabını pasife alamazsın.' }, { status: 409 });
+    }
 
-  if (target.isActive && !parsedBody.data.isActive && isAdminRole(target.role)) {
-    const activeAdminCount = await prisma.user.count({
+    if (target.isActive && !parsedBody.data.isActive && isAdminRole(target.role)) {
+      const activeAdminCount = await prisma.user.count({
       where: {
         isActive: true,
         role: {
@@ -72,24 +74,24 @@ export async function PUT(request: Request, context: RouteContext) {
       },
     });
 
-    if (activeAdminCount <= 1) {
-      return NextResponse.json({ message: 'Sistemde en az bir aktif admin kalmalı.' }, { status: 409 });
+      if (activeAdminCount <= 1) {
+        return NextResponse.json({ message: 'Sistemde en az bir aktif admin kalmalı.' }, { status: 409 });
+      }
     }
-  }
 
 
-  let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
+    let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
 
-  try {
-    fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsedBody.data.fourEyesApproverEmail);
-  } catch (error) {
-    return NextResponse.json(
-      { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
-      { status: 400 },
-    );
-  }
+    try {
+      fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsedBody.data.fourEyesApproverEmail);
+    } catch (error) {
+      return NextResponse.json(
+        { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
+        { status: 400 },
+      );
+    }
 
-  const updatedUser = await prisma.user.update({
+    const updatedUser = await prisma.user.update({
     where: { id: target.id },
     data: { isActive: parsedBody.data.isActive },
     select: {
@@ -101,7 +103,7 @@ export async function PUT(request: Request, context: RouteContext) {
     },
   });
 
-  await createAdminAuditLog({
+    await createAdminAuditLog({
     actorId: guard.user.id,
     action: 'user.status.updated',
     resourceType: 'user',
@@ -115,5 +117,6 @@ export async function PUT(request: Request, context: RouteContext) {
     request,
   });
 
-  return NextResponse.json({ ok: true, user: updatedUser }, { status: 200 });
+    return NextResponse.json({ ok: true, user: updatedUser }, { status: 200 });
+  });
 }

@@ -7,6 +7,7 @@ import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { requireAdmin } from '@/lib/auth/admin';
 import { getServerEnv } from '@/lib/env';
 import { resolveOptionalFourEyesApproval, sensitiveActionSchema } from '@/lib/auth/sensitive-action';
+import { withAdminWriteProtection, withCsrfToken } from '@/lib/security/admin-write-guard';
 
 const promptStudioSchema = z.object({
   provider: z.string().trim().min(1).max(64),
@@ -125,7 +126,7 @@ async function runPromptStudioSmokeTest(expected: PromptStudioDraftInput) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const guard = await requireAdmin();
 
   if (!guard.ok) {
@@ -144,7 +145,7 @@ export async function GET() {
     openaiApiKey: env.OPENAI_API_KEY ? 'configured' : 'not configured',
   };
 
-  return NextResponse.json({ ok: true, config, previousConfig, changes, secretStatus }, { status: 200 });
+  return withCsrfToken(request, { ok: true, config, previousConfig, changes, secretStatus }, { status: 200 });
 }
 
 export async function POST(request: Request) {
@@ -154,25 +155,26 @@ export async function POST(request: Request) {
     return guard.response;
   }
 
-  const parsed = promptStudioSchema.safeParse(await getJsonBody(request));
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const parsed = promptStudioSchema.safeParse(await getJsonBody(request));
 
-  if (!parsed.success) {
-    return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
-  }
+    if (!parsed.success) {
+      return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+    }
 
-  const env = getServerEnv();
-  const warnings: string[] = [];
-  const contentValidation = validatePromptStudioInput(parsed.data);
+    const env = getServerEnv();
+    const warnings: string[] = [];
+    const contentValidation = validatePromptStudioInput(parsed.data);
 
-  if (!contentValidation.ok) {
-    return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', warnings: contentValidation.issues }, { status: 400 });
-  }
+    if (!contentValidation.ok) {
+      return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', warnings: contentValidation.issues }, { status: 400 });
+    }
 
-  if (parsed.data.provider.toLowerCase() === 'openai' && !env.OPENAI_API_KEY) {
-    warnings.push('OPENAI_API_KEY bulunamadı. Test yalnızca şema doğrulaması ile tamamlandı.');
-  }
+    if (parsed.data.provider.toLowerCase() === 'openai' && !env.OPENAI_API_KEY) {
+      warnings.push('OPENAI_API_KEY bulunamadı. Test yalnızca şema doğrulaması ile tamamlandı.');
+    }
 
-  await createAdminAuditLog({
+    await createAdminAuditLog({
     actorId: guard.user.id,
     action: 'prompt_studio_tested',
     resourceType: 'app_meta',
@@ -182,14 +184,15 @@ export async function POST(request: Request) {
     request,
   });
 
-  return NextResponse.json(
-    {
-      ok: true,
-      message: warnings.length ? 'Test uyarılarla tamamlandı.' : 'Test başarılı. Kaydetmeden önce doğrulama tamamlandı.',
-      warnings,
-    },
-    { status: 200 },
-  );
+    return NextResponse.json(
+      {
+        ok: true,
+        message: warnings.length ? 'Test uyarılarla tamamlandı.' : 'Test başarılı. Kaydetmeden önce doğrulama tamamlandı.',
+        warnings,
+      },
+      { status: 200 },
+    );
+  });
 }
 
 export async function PUT(request: Request) {
@@ -199,34 +202,35 @@ export async function PUT(request: Request) {
     return guard.response;
   }
 
-  const parsed = promptStudioPublishSchema.safeParse(await getJsonBody(request));
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const parsed = promptStudioPublishSchema.safeParse(await getJsonBody(request));
 
-  if (!parsed.success) {
-    return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
-  }
+    if (!parsed.success) {
+      return NextResponse.json({ message: 'Geçersiz prompt ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+    }
 
 
-  let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
+    let fourEyesApproval: { approverId: string | null; approverEmail: string | null };
 
-  try {
-    fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsed.data.fourEyesApproverEmail);
-  } catch (error) {
-    return NextResponse.json(
-      { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
-      { status: 400 },
-    );
-  }
+    try {
+      fourEyesApproval = await resolveOptionalFourEyesApproval(guard.user.id, parsed.data.fourEyesApproverEmail);
+    } catch (error) {
+      return NextResponse.json(
+        { message: error instanceof Error ? error.message : '4-eyes doğrulaması başarısız oldu.' },
+        { status: 400 },
+      );
+    }
 
-  const contentValidation = validatePromptStudioInput(parsed.data);
-  if (!contentValidation.ok) {
-    return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', issues: contentValidation.issues }, { status: 400 });
-  }
+    const contentValidation = validatePromptStudioInput(parsed.data);
+    if (!contentValidation.ok) {
+      return NextResponse.json({ message: 'Prompt doğrulaması başarısız oldu.', issues: contentValidation.issues }, { status: 400 });
+    }
 
-  const current = await loadCurrentPromptStudioConfig();
-  const nextVersion = current.version + 1;
-  const publishedAt = new Date();
+    const current = await loadCurrentPromptStudioConfig();
+    const nextVersion = current.version + 1;
+    const publishedAt = new Date();
 
-  await prisma.$transaction([
+    await prisma.$transaction([
     prisma.appMeta.upsert({
       where: { namespace_key: { namespace: 'ai', key: 'provider' } },
       update: {
@@ -284,9 +288,9 @@ export async function PUT(request: Request) {
         publishedBy: guard.user.id,
       },
     }),
-  ]);
+    ]);
 
-  await createAdminAuditLog({
+    await createAdminAuditLog({
     actorId: guard.user.id,
     action: 'prompt_studio_updated',
     resourceType: 'app_meta',
@@ -303,9 +307,10 @@ export async function PUT(request: Request) {
     request,
   });
 
-  const smokeTest = await runPromptStudioSmokeTest(parsed.data);
+    const smokeTest = await runPromptStudioSmokeTest(parsed.data);
 
-  return NextResponse.json({ ok: true, version: nextVersion, smokeTest }, { status: 200 });
+    return NextResponse.json({ ok: true, version: nextVersion, smokeTest }, { status: 200 });
+  });
 }
 
 export async function DELETE(request: Request) {
@@ -315,7 +320,8 @@ export async function DELETE(request: Request) {
     return guard.response;
   }
 
-  const latestUpdate = await prisma.adminAuditLog.findFirst({
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const latestUpdate = await prisma.adminAuditLog.findFirst({
     where: {
       resourceType: 'app_meta',
       resourceKey: 'ai.promptStudio',
@@ -326,20 +332,20 @@ export async function DELETE(request: Request) {
     },
   });
 
-  if (!latestUpdate?.beforeJson || typeof latestUpdate.beforeJson !== 'object') {
-    return NextResponse.json({ message: 'Rollback için uygun önceki sürüm bulunamadı.' }, { status: 400 });
-  }
+    if (!latestUpdate?.beforeJson || typeof latestUpdate.beforeJson !== 'object') {
+      return NextResponse.json({ message: 'Rollback için uygun önceki sürüm bulunamadı.' }, { status: 400 });
+    }
 
-  const rollbackTarget = promptStudioSchema.safeParse(latestUpdate.beforeJson);
-  if (!rollbackTarget.success) {
-    return NextResponse.json({ message: 'Rollback verisi bozuk veya eksik.' }, { status: 400 });
-  }
+    const rollbackTarget = promptStudioSchema.safeParse(latestUpdate.beforeJson);
+    if (!rollbackTarget.success) {
+      return NextResponse.json({ message: 'Rollback verisi bozuk veya eksik.' }, { status: 400 });
+    }
 
-  const current = await loadCurrentPromptStudioConfig();
-  const nextVersion = current.version + 1;
-  const publishedAt = new Date();
+    const current = await loadCurrentPromptStudioConfig();
+    const nextVersion = current.version + 1;
+    const publishedAt = new Date();
 
-  await prisma.$transaction([
+    await prisma.$transaction([
     prisma.appMeta.upsert({
       where: { namespace_key: { namespace: 'ai', key: 'provider' } },
       update: {
@@ -397,9 +403,9 @@ export async function DELETE(request: Request) {
         publishedBy: guard.user.id,
       },
     }),
-  ]);
+    ]);
 
-  await createAdminAuditLog({
+    await createAdminAuditLog({
     actorId: guard.user.id,
     action: 'prompt_studio_rollback',
     resourceType: 'app_meta',
@@ -409,5 +415,6 @@ export async function DELETE(request: Request) {
     request,
   });
 
-  return NextResponse.json({ ok: true, version: nextVersion, restored: rollbackTarget.data }, { status: 200 });
+    return NextResponse.json({ ok: true, version: nextVersion, restored: rollbackTarget.data }, { status: 200 });
+  });
 }

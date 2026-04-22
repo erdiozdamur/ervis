@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
+import { createMutationHeaders, createMutationHeadersWithoutJson } from '@/lib/security/mutation-request';
 
 type PromptConfig = {
   provider: string;
@@ -26,6 +27,7 @@ type PromptStudioChange = {
 
 type PromptStudioResponse = {
   ok: true;
+  csrfToken: string;
   config: PromptConfig;
   previousConfig: Partial<PromptConfig> | null;
   changes: PromptStudioChange[];
@@ -53,6 +55,7 @@ export function PromptStudioPanel() {
   const [publishConfirm, setPublishConfirm] = useState('');
   const [fourEyesApproverEmail, setFourEyesApproverEmail] = useState('');
   const [openAiApiKeyStatus, setOpenAiApiKeyStatus] = useState<'configured' | 'not configured'>('not configured');
+  const [csrfToken, setCsrfToken] = useState('');
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,7 @@ export function PromptStudioPanel() {
       setPreviousConfig(payload.previousConfig);
       setChanges(payload.changes);
       setOpenAiApiKeyStatus(payload.secretStatus.openaiApiKey);
+      setCsrfToken(payload.csrfToken);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
     } finally {
@@ -155,7 +159,7 @@ export function PromptStudioPanel() {
       const response = await fetch('/api/admin/prompt-studio', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...createMutationHeaders(csrfToken),
         },
         body: JSON.stringify({ provider, model, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
       });
@@ -188,9 +192,9 @@ export function PromptStudioPanel() {
       const response = await fetch('/api/admin/prompt-studio', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
+          ...createMutationHeaders(csrfToken),
         },
-        body: JSON.stringify({ provider, model, promptVersion }),
+        body: JSON.stringify({ provider, model, promptVersion, reason: publishReason, confirm: publishConfirm, fourEyesApproverEmail }),
       });
 
       const payload = (await response.json()) as {
@@ -224,6 +228,7 @@ export function PromptStudioPanel() {
     try {
       const response = await fetch('/api/admin/prompt-studio', {
         method: 'DELETE',
+        headers: createMutationHeadersWithoutJson(csrfToken),
       });
 
       const payload = (await response.json()) as { message?: string; version?: number };

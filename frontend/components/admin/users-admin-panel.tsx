@@ -7,6 +7,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
 import { StatusPill } from '@/components/ui/status-pill';
+import { createMutationHeaders } from '@/lib/security/mutation-request';
 
 type EditableUserRole = Exclude<UserRole, 'OWNER'>;
 
@@ -31,6 +32,7 @@ type UserRow = {
 
 type UsersResponse = {
   ok: true;
+  csrfToken: string;
   users: UserRow[];
   pagination: {
     page: number;
@@ -59,6 +61,7 @@ export function UsersAdminPanel() {
   const [reason, setReason] = useState('');
   const [fourEyesApproverEmail, setFourEyesApproverEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [csrfToken, setCsrfToken] = useState('');
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -86,6 +89,7 @@ export function UsersAdminPanel() {
       }
 
       setData(payload as UsersResponse);
+      setCsrfToken((payload as UsersResponse).csrfToken);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
       setData(null);
@@ -133,9 +137,7 @@ export function UsersAdminPanel() {
 
       const response = await fetch(endpoint, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: createMutationHeaders(csrfToken),
         body: JSON.stringify(body),
       });
 

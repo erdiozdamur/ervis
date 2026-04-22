@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
 import { Textarea } from '@/components/ui/textarea';
+import { createMutationHeaders, createMutationHeadersWithoutJson } from '@/lib/security/mutation-request';
 
 type AppSettingsConfig = {
   timeZone: string;
@@ -25,6 +26,7 @@ type AppSettingsChange = {
 
 type AppSettingsResponse = {
   ok: true;
+  csrfToken: string;
   config: AppSettingsConfig;
   defaults: {
     timeZone: string;
@@ -64,6 +66,7 @@ export function AppSettingsPanel() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [csrfToken, setCsrfToken] = useState('');
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -83,6 +86,7 @@ export function AppSettingsPanel() {
       setUploadMaxFileSizeMb(String(payload.config.uploadMaxFileSizeMb));
       setFlagsText(flagsToText(payload.config.experimentalFeatureFlags));
       setChanges(payload.changes);
+      setCsrfToken(payload.csrfToken);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
     } finally {
@@ -102,7 +106,7 @@ export function AppSettingsPanel() {
     try {
       const response = await fetch('/api/admin/app-settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: createMutationHeaders(csrfToken),
         body: JSON.stringify({
           timeZone,
           uploadMaxFileSizeMb: Number(uploadMaxFileSizeMb),
@@ -130,7 +134,7 @@ export function AppSettingsPanel() {
     setInfo(null);
 
     try {
-      const response = await fetch('/api/admin/app-settings', { method: 'DELETE' });
+      const response = await fetch('/api/admin/app-settings', { method: 'DELETE', headers: createMutationHeadersWithoutJson(csrfToken) });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) {
         throw new Error(payload.message ?? 'Reset başarısız oldu.');
@@ -155,7 +159,7 @@ export function AppSettingsPanel() {
 
       const response = await fetch('/api/admin/app-settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: createMutationHeaders(csrfToken),
         body: JSON.stringify({ config: parsed }),
       });
 
