@@ -9,6 +9,7 @@ type EffectiveConfig = {
   mealAnalysisStage2Model: string;
   mealAssetMaxFileSizeMb: number;
   appTimeZone: string;
+  experimentalFeatureFlags: string[];
 };
 
 type PublishedConfigMap = Map<string, unknown>;
@@ -20,9 +21,8 @@ const defaultEffectiveConfig: EffectiveConfig = {
   mealAnalysisStage2Model: 'gpt-4.1-mini',
   mealAssetMaxFileSizeMb: 12,
   appTimeZone: DEFAULT_APP_TIME_ZONE,
+  experimentalFeatureFlags: [],
 };
-
-let cachedEffectiveConfig: EffectiveConfig | null = null;
 
 function getStringRecordValue(value: unknown, key: string) {
   if (!value || typeof value !== 'object') {
@@ -42,6 +42,24 @@ function getNumberRecordValue(value: unknown, key: string) {
   return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
 }
 
+
+function getStringArrayRecordValue(value: unknown, key: string) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = (value as Record<string, unknown>)[key];
+  if (!Array.isArray(candidate)) {
+    return null;
+  }
+
+  const parsed = candidate
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return parsed.length > 0 ? parsed : [];
+}
 function getPublishedConfigValue(map: PublishedConfigMap, fullKey: string) {
   return map.get(fullKey) ?? null;
 }
@@ -63,6 +81,7 @@ async function loadPublishedConfigMap(): Promise<PublishedConfigMap> {
           { namespace: 'ai', key: 'analysisPromptVersion' },
           { namespace: 'app', key: 'timeZone' },
           { namespace: 'app', key: 'uploadValidation' },
+          { namespace: 'app', key: 'featureFlags' },
         ],
       },
       orderBy: {
@@ -86,10 +105,6 @@ async function loadPublishedConfigMap(): Promise<PublishedConfigMap> {
 }
 
 export async function getEffectiveConfig(): Promise<EffectiveConfig> {
-  if (cachedEffectiveConfig) {
-    return cachedEffectiveConfig;
-  }
-
   const env = getServerEnv();
   const publishedConfig = await loadPublishedConfigMap();
 
@@ -104,8 +119,12 @@ export async function getEffectiveConfig(): Promise<EffectiveConfig> {
     getPublishedConfigValue(publishedConfig, 'app.uploadValidation'),
     'maxFileSizeMb',
   );
+  const publishedFeatureFlags = getStringArrayRecordValue(
+    getPublishedConfigValue(publishedConfig, 'app.featureFlags'),
+    'flags',
+  );
 
-  cachedEffectiveConfig = {
+  return {
     mealAnalysisStage1Model: publishedMealModel ?? env.MEAL_ANALYSIS_STAGE1_MODEL ?? defaultEffectiveConfig.mealAnalysisStage1Model,
     mealAnalysisStage2Model: publishedMealModel ?? env.MEAL_ANALYSIS_STAGE2_MODEL ?? defaultEffectiveConfig.mealAnalysisStage2Model,
     aiProvider: publishedAiProvider ?? env.AI_PROVIDER ?? defaultEffectiveConfig.aiProvider,
@@ -114,7 +133,6 @@ export async function getEffectiveConfig(): Promise<EffectiveConfig> {
     mealAssetMaxFileSizeMb:
       publishedMaxFileSizeMb ?? env.MEAL_ASSET_MAX_FILE_SIZE_MB ?? defaultEffectiveConfig.mealAssetMaxFileSizeMb,
     appTimeZone: publishedTimeZone ?? env.APP_TIME_ZONE ?? defaultEffectiveConfig.appTimeZone,
+    experimentalFeatureFlags: publishedFeatureFlags ?? defaultEffectiveConfig.experimentalFeatureFlags,
   };
-
-  return cachedEffectiveConfig;
 }
