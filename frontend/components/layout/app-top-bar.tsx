@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import type { UserRole } from '@prisma/client';
 import { Icon } from '@/components/ui/icon';
 import { buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { isAdminRole } from '@/lib/auth/admin';
+import { isAdminEmail } from '@/lib/auth/admin';
 import { formatDateInAppTimeZone } from '@/lib/date/istanbul';
 import { cn } from '@/lib/utils/cn';
 
@@ -11,7 +10,6 @@ type AppTopBarProps = {
   user: {
     name?: string | null;
     email?: string | null;
-    role?: UserRole | null;
   };
 };
 
@@ -37,7 +35,7 @@ export function AppTopBar({ user }: AppTopBarProps) {
   const now = new Date();
   const displayName = getDisplayName(user.name, user.email);
   const formattedDate = formatDateInAppTimeZone(now);
-  const isAdmin = isAdminRole(user.role);
+  const isAdmin = isAdminEmail(user.email);
 
   return (
     <Card tone="hero" className="hairline px-2.5 py-1 sm:px-4 sm:py-3">
@@ -60,7 +58,7 @@ export function AppTopBar({ user }: AppTopBarProps) {
             className={cn(buttonStyles({ variant: 'secondary', size: 'icon' }), 'h-9 w-9 rounded-2xl sm:h-11 sm:w-auto sm:px-4')}
             aria-label="Yönetim paneli"
           >
-            <Icon name="settings" className="h-4.5 w-4.5" />
+            <Icon name="chart" className="h-4.5 w-4.5" />
             <span className="hidden sm:inline">Yönetim Paneli</span>
           </Link>
         ) : null}

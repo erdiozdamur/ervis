@@ -1,5 +1,3 @@
-import type { UserRole } from '@prisma/client';
-
 export type AuthFieldName = 'name' | 'email' | 'password' | 'confirmPassword';
 
 export type AuthFieldErrors = Partial<Record<AuthFieldName, string>>;
@@ -13,8 +11,6 @@ export type RegisterUserResult =
         name: string | null;
         image: string | null;
         emailVerified: Date | null;
-        role: UserRole;
-        isActive: boolean;
       };
     }
   | {

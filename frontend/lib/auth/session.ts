@@ -14,7 +14,7 @@ export async function getCurrentUser() {
 export async function requireCurrentUser() {
   const user = await getCurrentUser();
 
-  if (!user || !user.isActive) {
+  if (!user) {
     redirect(`${AUTH_SIGN_IN_PATH}?next=${encodeURIComponent(AUTH_APP_PATH)}`);
   }
 

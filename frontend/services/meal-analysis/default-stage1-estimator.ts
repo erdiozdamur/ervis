@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { getServerEnv } from '@/lib/env';
-import { getEffectiveConfig } from '@/lib/effective-config';
 import { getDefaultMealTitleSuggestion } from '@/lib/meals/draft-title';
 import type { MealAnalysisContext, MealAnalysisStage1Estimator, Stage1ItemFactoryInput } from '@/services/meal-analysis/contracts';
 import { normalizeFoodQuery, parseTextIntoFoodSegments, suggestMealTypeFromConsumedAt } from '@/services/meal-analysis/heuristics';
@@ -200,7 +199,7 @@ function parseStructuredTextItems(input: { textContent: string | null; assetId: 
 
 export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   provider = 'heuristic-stage1';
-  model = 'gpt-4.1-mini';
+  model = getServerEnv().MEAL_ANALYSIS_STAGE1_MODEL;
   protected async extractImageItems(input: Parameters<typeof extractMealItemsFromImageWithOpenAi>[0]) {
     return extractMealItemsFromImageWithOpenAi(input);
   }
@@ -312,8 +311,6 @@ export class DefaultMealStage1Estimator implements MealAnalysisStage1Estimator {
   }
 
   async estimate(context: MealAnalysisContext) {
-    const effectiveConfig = await getEffectiveConfig();
-    this.model = effectiveConfig.mealAnalysisStage1Model;
     const warnings: string[] = [];
     const estimatedItems: MealStage1EstimatedItem[] = [];
     let stage1Diagnostics: {

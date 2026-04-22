@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import type { UserRole } from '@prisma/client';
 import { MobileBottomNav } from '@/components/navigation/mobile-bottom-nav';
 import { AppTopBar } from '@/components/layout/app-top-bar';
 import { MobileAppShell } from '@/components/layout/mobile-app-shell';
@@ -9,7 +8,6 @@ type AppShellProps = {
   user: {
     name?: string | null;
     email?: string | null;
-    role?: UserRole | null;
   };
   needsProfileCompletion?: boolean;
 };

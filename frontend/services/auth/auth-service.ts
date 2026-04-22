@@ -1,4 +1,4 @@
-import { Prisma, type UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import type { SignInInput, SignUpInput } from '@/lib/auth/validation';
@@ -14,8 +14,6 @@ function toAuthUser(user: {
   name: string | null;
   image: string | null;
   emailVerified: Date | null;
-  role: UserRole;
-  isActive: boolean;
 }) {
   return {
     id: user.id,
@@ -23,8 +21,6 @@ function toAuthUser(user: {
     name: user.name,
     image: user.image,
     emailVerified: user.emailVerified,
-    role: user.role,
-    isActive: user.isActive,
   };
 }
 
@@ -33,7 +29,7 @@ export async function authenticateUserWithPassword(input: SignInInput) {
     where: { email: normalizeEmail(input.email) },
   });
 
-  if (!user?.passwordHash || !user.isActive) {
+  if (!user?.passwordHash) {
     return null;
   }
 
