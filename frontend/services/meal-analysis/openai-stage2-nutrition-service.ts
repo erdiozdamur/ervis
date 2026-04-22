@@ -2,6 +2,7 @@ import { getServerEnv } from '@/lib/env';
 import { readMealAssetFile } from '@/lib/storage/meal-asset-storage';
 import { localizeFoodDisplayName } from '@/services/meal-analysis/heuristics';
 import { extractResponseDiagnostics, extractStructuredOutputData } from '@/services/meal-analysis/openai-structured-output';
+import { getAgentPromptText } from '@/services/ai-agent-prompt-service';
 import type { MealAnalysisAssetInput, ResolvedNutritionMacros } from '@/types/meal-analysis';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -229,6 +230,8 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
 
   userContent.push(...(await buildImageContentParts(input.mealContext.sourceAssets)));
 
+  const nutritionPrompt = await getAgentPromptText('meal_analysis_stage2_nutrition');
+
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
     headers: {
@@ -237,19 +240,7 @@ export async function resolveNutritionWithOpenAi(input: OpenAiResolutionInput): 
     },
     body: JSON.stringify({
       model: env.MEAL_ANALYSIS_STAGE2_MODEL,
-      instructions: [
-        'You are resolving nutrition for a mobile calorie tracking app.',
-        'Return nutrition for exactly one reviewable meal item.',
-        'Be practical and realistic for Turkish daily eating patterns and globally known branded fast foods.',
-        'Return canonicalName in Turkish.',
-        'If the item is a generic photo placeholder such as "Fotoğraftaki öğün", use the attached image as the primary evidence.',
-        'For generic photo placeholders, do not hallucinate a specific single dish name unless it is visually obvious; estimate the visible plate conservatively.',
-        'If the image appears to contain several separate foods but stage 1 failed to split them, estimate the total visible plate for this one review item.',
-        'If the item clearly refers to a branded combo or menu, estimate the full combo unless the text excludes fries or drink.',
-        'If quantity text is colloquial, infer a plausible single-user serving.',
-        'Do not return implausibly low placeholder values.',
-        'Prefer conservative but believable numbers and keep the result easy for a human to review and edit.',
-      ].join(' '),
+      instructions: nutritionPrompt,
       input: [
         {
           role: 'user',
