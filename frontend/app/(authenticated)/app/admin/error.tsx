@@ -12,19 +12,15 @@ type AdminErrorProps = {
 export default function AdminError({ reset }: AdminErrorProps) {
   return (
     <Stack gap="lg">
-      <ScreenHeader
-        eyebrow="Admin"
-        title="Admin Panel"
-        description="An admin request did not complete."
-      />
+      <ScreenHeader eyebrow="Yönetim" title="Yönetim Paneli" description="Yönetim isteği tamamlanamadı." />
 
       <StatePanel
         variant="error"
-        title="Admin modules need another try"
-        description="Error handling is standardized across admin tabs, so you can safely retry without losing navigation context."
+        title="Yönetim modülü yeniden denenmeli"
+        description="Aynı ekranda kalarak güvenle tekrar deneyebilirsiniz."
         action={
           <Button variant="secondary" onClick={reset}>
-            Try again
+            Tekrar dene
           </Button>
         }
       />
