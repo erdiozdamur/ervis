@@ -15,6 +15,7 @@ function toAuthUser(user: {
   image: string | null;
   emailVerified: Date | null;
   role: UserRole;
+  isActive: boolean;
 }) {
   return {
     id: user.id,
@@ -23,6 +24,7 @@ function toAuthUser(user: {
     image: user.image,
     emailVerified: user.emailVerified,
     role: user.role,
+    isActive: user.isActive,
   };
 }
 
@@ -31,7 +33,7 @@ export async function authenticateUserWithPassword(input: SignInInput) {
     where: { email: normalizeEmail(input.email) },
   });
 
-  if (!user?.passwordHash) {
+  if (!user?.passwordHash || !user.isActive) {
     return null;
   }
 

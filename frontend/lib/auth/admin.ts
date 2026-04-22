@@ -40,6 +40,13 @@ export async function requireAdmin(): Promise<GuardResult> {
     };
   }
 
+  if (!session.user.isActive) {
+    return {
+      ok: false,
+      response: NextResponse.json({ message: 'Pasif kullanıcı erişemez.' }, { status: 403 }),
+    };
+  }
+
   if (!isAdminRole(session.user.role)) {
     return {
       ok: false,
@@ -63,6 +70,13 @@ export async function requireSuperAdmin(): Promise<GuardResult> {
     return {
       ok: false,
       response: NextResponse.json({ message: 'Yetkisiz erişim.' }, { status: 401 }),
+    };
+  }
+
+  if (!session.user.isActive) {
+    return {
+      ok: false,
+      response: NextResponse.json({ message: 'Pasif kullanıcı erişemez.' }, { status: 403 }),
     };
   }
 

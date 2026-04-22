@@ -14,6 +14,7 @@ export type RegisterUserResult =
         image: string | null;
         emailVerified: Date | null;
         role: UserRole;
+        isActive: boolean;
       };
     }
   | {

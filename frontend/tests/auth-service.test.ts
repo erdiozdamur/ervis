@@ -23,6 +23,7 @@ test('authenticateUserWithPassword normalizes email and returns the auth user wh
       image: null,
       emailVerified: null,
       role: 'USER',
+      isActive: true,
       passwordHash,
     };
   };
@@ -41,6 +42,7 @@ test('authenticateUserWithPassword normalizes email and returns the auth user wh
       image: null,
       emailVerified: null,
       role: 'USER',
+      isActive: true,
     });
   } finally {
     userDelegate.findUnique = originalFindUnique;

@@ -6,15 +6,15 @@ import { getJsonBody, getSearchParamsObject } from '@/lib/api/validation';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { isAdminRole, requireSuperAdmin } from '@/lib/auth/admin';
 
-const updateRoleParamsSchema = z.object({
+const updateStatusParamsSchema = z.object({
   userId: z.string().trim().min(1),
 });
 
-const updateRoleBodySchema = z.object({
-  role: z.nativeEnum(UserRole),
+const updateStatusBodySchema = z.object({
+  isActive: z.boolean(),
 });
 
-const updateRoleQuerySchema = z.object({
+const updateStatusQuerySchema = z.object({
   reason: z.string().trim().min(1).max(255).optional(),
 });
 
@@ -31,7 +31,7 @@ export async function PUT(request: Request, context: RouteContext) {
     return guard.response;
   }
 
-  const parsedParams = updateRoleParamsSchema.safeParse(context.params);
+  const parsedParams = updateStatusParamsSchema.safeParse(context.params);
 
   if (!parsedParams.success) {
     return NextResponse.json(
@@ -40,7 +40,7 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const parsedQuery = updateRoleQuerySchema.safeParse(getSearchParamsObject(request));
+  const parsedQuery = updateStatusQuerySchema.safeParse(getSearchParamsObject(request));
 
   if (!parsedQuery.success) {
     return NextResponse.json(
@@ -49,7 +49,7 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const parsedBody = updateRoleBodySchema.safeParse(await getJsonBody(request));
+  const parsedBody = updateStatusBodySchema.safeParse(await getJsonBody(request));
 
   if (!parsedBody.success) {
     return NextResponse.json(
@@ -59,29 +59,19 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const target = await prisma.user.findUnique({
-    where: {
-      id: parsedParams.data.userId,
-    },
-    select: {
-      id: true,
-      role: true,
-      email: true,
-      isActive: true,
-    },
+    where: { id: parsedParams.data.userId },
+    select: { id: true, email: true, role: true, isActive: true },
   });
 
   if (!target) {
     return NextResponse.json({ message: 'Kullanıcı bulunamadı.' }, { status: 404 });
   }
 
-  if (target.id === guard.user.id && target.role !== parsedBody.data.role) {
-    return NextResponse.json({ message: 'Kendi rolünü düşüremezsin.' }, { status: 409 });
+  if (target.id === guard.user.id && target.isActive !== parsedBody.data.isActive) {
+    return NextResponse.json({ message: 'Kendi hesabını pasife alamazsın.' }, { status: 409 });
   }
 
-  const targetIsAdmin = isAdminRole(target.role);
-  const nextIsAdmin = isAdminRole(parsedBody.data.role);
-
-  if (targetIsAdmin && !nextIsAdmin && target.isActive) {
+  if (target.isActive && !parsedBody.data.isActive && isAdminRole(target.role)) {
     const activeAdminCount = await prisma.user.count({
       where: {
         isActive: true,
@@ -98,7 +88,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const updatedUser = await prisma.user.update({
     where: { id: target.id },
-    data: { role: parsedBody.data.role },
+    data: { isActive: parsedBody.data.isActive },
     select: {
       id: true,
       email: true,
@@ -110,12 +100,12 @@ export async function PUT(request: Request, context: RouteContext) {
 
   await createAdminAuditLog({
     actorId: guard.user.id,
-    action: 'user.role.updated',
+    action: 'user.status.updated',
     resourceType: 'user',
     resourceKey: target.id,
-    beforeJson: { role: target.role },
+    beforeJson: { isActive: target.isActive },
     afterJson: {
-      role: updatedUser.role,
+      isActive: updatedUser.isActive,
       reason: parsedQuery.data.reason ?? null,
     },
     request,
