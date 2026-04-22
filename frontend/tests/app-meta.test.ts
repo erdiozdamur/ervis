@@ -4,7 +4,9 @@ import { appMetaRegistry, validateAppMetaKey, validateAppMetaRecord } from '@/li
 
 test('app meta registry only exposes namespaced keys', () => {
   assert.deepEqual(Object.keys(appMetaRegistry).sort(), [
+    'ai.analysisPromptVersion',
     'ai.mealModel',
+    'ai.provider',
     'app.name',
     'app.supportEmail',
     'feature.mealDraftReview',

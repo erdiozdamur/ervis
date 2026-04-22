@@ -4,6 +4,7 @@ import { ScreenHeader } from '@/components/layout/screen-header';
 import { Stack } from '@/components/layout/stack';
 import { buttonStyles } from '@/components/ui/button';
 import { StatePanel } from '@/components/ui/state-panel';
+import { PromptStudioPanel } from '@/components/admin/prompt-studio-panel';
 import { UsersAdminPanel } from '@/components/admin/users-admin-panel';
 import { isAdminRole } from '@/lib/auth/admin';
 import { requireCurrentUser } from '@/lib/auth/session';
@@ -74,6 +75,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
 
       {selectedTab === 'users' ? (
         <UsersAdminPanel />
+      ) : selectedTab === 'prompt-studio' ? (
+        <PromptStudioPanel />
       ) : (
         <StatePanel
           variant="empty"
