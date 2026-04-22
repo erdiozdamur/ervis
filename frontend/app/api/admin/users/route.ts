@@ -5,6 +5,7 @@ import { prisma } from '@/db/prisma';
 import { getSearchParamsObject } from '@/lib/api/validation';
 import { isAdminRole, requireAdmin, isSuperAdminRole } from '@/lib/auth/admin';
 import { getSupportedPrivilegedRoles } from '@/lib/auth/admin-role-compat';
+import { withCsrfToken } from '@/lib/security/admin-write-guard';
 
 const listUsersQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -93,7 +94,8 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json(
+  return withCsrfToken(
+    request,
     {
       ok: true,
       users: data,

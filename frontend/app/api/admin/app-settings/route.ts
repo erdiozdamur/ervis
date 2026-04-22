@@ -7,6 +7,7 @@ import { requireAdmin } from '@/lib/auth/admin';
 import { createAdminAuditLog } from '@/lib/auth/admin-audit';
 import { DEFAULT_APP_TIME_ZONE } from '@/lib/config/app';
 import { getServerEnv } from '@/lib/env';
+import { withAdminWriteProtection, withCsrfToken } from '@/lib/security/admin-write-guard';
 
 type AppSettingsConfig = {
   timeZone: string;
@@ -191,7 +192,7 @@ async function publishAppSettings(config: z.infer<typeof appSettingsSchema>, act
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const guard = await requireAdmin();
   if (!guard.ok) {
     return guard.response;
@@ -199,7 +200,8 @@ export async function GET() {
 
   const [config, changes] = await Promise.all([loadCurrentAppSettingsConfig(), loadRecentChanges()]);
 
-  return NextResponse.json(
+  return withCsrfToken(
+    request,
     {
       ok: true,
       config,
@@ -221,26 +223,28 @@ export async function PUT(request: Request) {
     return guard.response;
   }
 
-  const parsed = appSettingsSchema.safeParse(await getJsonBody(request));
-  if (!parsed.success) {
-    return NextResponse.json({ message: 'Geçersiz app ayarları.', issues: parsed.error.flatten() }, { status: 400 });
-  }
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const parsed = appSettingsSchema.safeParse(await getJsonBody(request));
+    if (!parsed.success) {
+      return NextResponse.json({ message: 'Geçersiz app ayarları.', issues: parsed.error.flatten() }, { status: 400 });
+    }
 
-  const current = await loadCurrentAppSettingsConfig();
-  const nextVersion = current.version + 1;
-  const published = await publishAppSettings(parsed.data, guard.user.id, nextVersion);
+    const current = await loadCurrentAppSettingsConfig();
+    const nextVersion = current.version + 1;
+    const published = await publishAppSettings(parsed.data, guard.user.id, nextVersion);
 
-  await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'app_settings_updated',
-    resourceType: 'app_meta',
-    resourceKey: 'app.settings',
-    beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({ ...published, version: nextVersion }),
-    request,
+    await createAdminAuditLog({
+      actorId: guard.user.id,
+      action: 'app_settings_updated',
+      resourceType: 'app_meta',
+      resourceKey: 'app.settings',
+      beforeJson: toJsonValue(current),
+      afterJson: toJsonValue({ ...published, version: nextVersion }),
+      request,
+    });
+
+    return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
   });
-
-  return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
 }
 
 export async function DELETE(request: Request) {
@@ -249,22 +253,24 @@ export async function DELETE(request: Request) {
     return guard.response;
   }
 
-  const current = await loadCurrentAppSettingsConfig();
-  const defaults = getDefaults();
-  const nextVersion = current.version + 1;
-  const published = await publishAppSettings(defaults, guard.user.id, nextVersion);
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const current = await loadCurrentAppSettingsConfig();
+    const defaults = getDefaults();
+    const nextVersion = current.version + 1;
+    const published = await publishAppSettings(defaults, guard.user.id, nextVersion);
 
-  await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'app_settings_reset',
-    resourceType: 'app_meta',
-    resourceKey: 'app.settings',
-    beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({ ...published, version: nextVersion }),
-    request,
+    await createAdminAuditLog({
+      actorId: guard.user.id,
+      action: 'app_settings_reset',
+      resourceType: 'app_meta',
+      resourceKey: 'app.settings',
+      beforeJson: toJsonValue(current),
+      afterJson: toJsonValue({ ...published, version: nextVersion }),
+      request,
+    });
+
+    return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
   });
-
-  return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
 }
 
 export async function POST(request: Request) {
@@ -273,29 +279,31 @@ export async function POST(request: Request) {
     return guard.response;
   }
 
-  const parsedBody = z
-    .object({
-      config: appSettingsSchema,
-    })
-    .safeParse(await getJsonBody(request));
+  return withAdminWriteProtection(request, guard.user.id, async () => {
+    const parsedBody = z
+      .object({
+        config: appSettingsSchema,
+      })
+      .safeParse(await getJsonBody(request));
 
-  if (!parsedBody.success) {
-    return NextResponse.json({ message: 'Import payload geçersiz.', issues: parsedBody.error.flatten() }, { status: 400 });
-  }
+    if (!parsedBody.success) {
+      return NextResponse.json({ message: 'Import payload geçersiz.', issues: parsedBody.error.flatten() }, { status: 400 });
+    }
 
-  const current = await loadCurrentAppSettingsConfig();
-  const nextVersion = current.version + 1;
-  const published = await publishAppSettings(parsedBody.data.config, guard.user.id, nextVersion);
+    const current = await loadCurrentAppSettingsConfig();
+    const nextVersion = current.version + 1;
+    const published = await publishAppSettings(parsedBody.data.config, guard.user.id, nextVersion);
 
-  await createAdminAuditLog({
-    actorId: guard.user.id,
-    action: 'app_settings_imported',
-    resourceType: 'app_meta',
-    resourceKey: 'app.settings',
-    beforeJson: toJsonValue(current),
-    afterJson: toJsonValue({ ...published, version: nextVersion }),
-    request,
+    await createAdminAuditLog({
+      actorId: guard.user.id,
+      action: 'app_settings_imported',
+      resourceType: 'app_meta',
+      resourceKey: 'app.settings',
+      beforeJson: toJsonValue(current),
+      afterJson: toJsonValue({ ...published, version: nextVersion }),
+      request,
+    });
+
+    return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
   });
-
-  return NextResponse.json({ ok: true, config: { ...published, version: nextVersion } }, { status: 200 });
 }
