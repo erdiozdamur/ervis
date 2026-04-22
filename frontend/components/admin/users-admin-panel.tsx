@@ -1,15 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { UserRole } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Input } from '@/components/ui/input';
 import { StatePanel } from '@/components/ui/state-panel';
 import { StatusPill } from '@/components/ui/status-pill';
 
-type UserRole = 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+type EditableUserRole = Exclude<UserRole, 'OWNER'>;
 
-const ROLE_OPTIONS: UserRole[] = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+const ROLE_OPTIONS: EditableUserRole[] = ['USER', 'ADMIN', 'SUPER_ADMIN'];
 
 type UserRow = {
   id: string;
@@ -40,7 +41,7 @@ type UsersResponse = {
 };
 
 type PendingAction =
-  | { kind: 'role'; user: UserRow; nextRole: UserRole }
+  | { kind: 'role'; user: UserRow; nextRole: EditableUserRole }
   | { kind: 'status'; user: UserRow; nextActive: boolean };
 
 const PAGE_SIZE = 10;
@@ -179,6 +180,7 @@ export function UsersAdminPanel() {
           <option value="USER">USER</option>
           <option value="ADMIN">ADMIN</option>
           <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+          <option value="OWNER">OWNER</option>
         </select>
 
         <select

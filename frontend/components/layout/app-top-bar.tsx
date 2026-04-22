@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { UserRole } from '@prisma/client';
 import { Icon } from '@/components/ui/icon';
 import { buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,7 +11,7 @@ type AppTopBarProps = {
   user: {
     name?: string | null;
     email?: string | null;
-    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | null;
+    role?: UserRole | null;
   };
 };
 
