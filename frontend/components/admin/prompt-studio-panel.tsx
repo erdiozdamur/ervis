@@ -29,6 +29,9 @@ type PromptStudioResponse = {
   config: PromptConfig;
   previousConfig: Partial<PromptConfig> | null;
   changes: PromptStudioChange[];
+  secretStatus: {
+    openaiApiKey: 'configured' | 'not configured';
+  };
 };
 
 export function PromptStudioPanel() {
@@ -46,6 +49,7 @@ export function PromptStudioPanel() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [smokeChecks, setSmokeChecks] = useState<Array<{ step: string; ok: boolean; detail: string }>>([]);
+  const [openAiApiKeyStatus, setOpenAiApiKeyStatus] = useState<'configured' | 'not configured'>('not configured');
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -65,6 +69,7 @@ export function PromptStudioPanel() {
       setPromptVersion(payload.config.promptVersion);
       setPreviousConfig(payload.previousConfig);
       setChanges(payload.changes);
+      setOpenAiApiKeyStatus(payload.secretStatus.openaiApiKey);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Bilinmeyen hata.');
     } finally {
@@ -265,9 +270,14 @@ export function PromptStudioPanel() {
       </div>
 
       {config ? (
-        <p className="text-sm text-slate-600">
-          Aktif sürüm: v{config.version}. Son yayınlayan: {config.lastPublishedBy ?? 'bilinmiyor'}.
-        </p>
+        <div className="space-y-1 text-sm text-slate-600">
+          <p>
+            Aktif sürüm: v{config.version}. Son yayınlayan: {config.lastPublishedBy ?? 'bilinmiyor'}.
+          </p>
+          <p>
+            OpenAI API Key: <strong>{openAiApiKeyStatus}</strong>
+          </p>
+        </div>
       ) : null}
 
       {error ? <StatePanel variant="error" title="İşlem hatası" description={error} /> : null}

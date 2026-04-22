@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/db/prisma';
 import { getSearchParamsObject } from '@/lib/api/validation';
 import { requireAdmin } from '@/lib/auth/admin';
+import { redactSecrets } from '@/lib/security/redact-secrets';
 
 const adminAuditListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -98,8 +99,8 @@ export async function GET(request: Request) {
         log.action,
         log.resourceType,
         log.resourceKey,
-        jsonToText(log.beforeJson),
-        jsonToText(log.afterJson),
+        jsonToText(redactSecrets(log.beforeJson)),
+        jsonToText(redactSecrets(log.afterJson)),
       ]
         .map((value) => toCsvCell(value))
         .join(','),
@@ -114,5 +115,11 @@ export async function GET(request: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true, logs }, { status: 200 });
+  const sanitizedLogs = logs.map((log) => ({
+    ...log,
+    beforeJson: redactSecrets(log.beforeJson),
+    afterJson: redactSecrets(log.afterJson),
+  }));
+
+  return NextResponse.json({ ok: true, logs: sanitizedLogs }, { status: 200 });
 }

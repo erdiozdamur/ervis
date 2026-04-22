@@ -14,6 +14,7 @@ const promptStudioSchema = z.object({
 });
 
 type PromptStudioDraftInput = z.infer<typeof promptStudioSchema>;
+type SecretStatus = 'configured' | 'not configured';
 
 const promptVersionPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
@@ -128,6 +129,7 @@ export async function GET() {
     return guard.response;
   }
 
+  const env = getServerEnv();
   const [config, changes] = await Promise.all([loadCurrentPromptStudioConfig(), loadRecentChanges()]);
   const latestUpdate = changes.find((change) => change.action === 'prompt_studio_updated');
   const previousConfig =
@@ -135,7 +137,11 @@ export async function GET() {
       ? (latestUpdate.beforeJson as Partial<PromptStudioDraftInput> & { version?: number })
       : null;
 
-  return NextResponse.json({ ok: true, config, previousConfig, changes }, { status: 200 });
+  const secretStatus: { openaiApiKey: SecretStatus } = {
+    openaiApiKey: env.OPENAI_API_KEY ? 'configured' : 'not configured',
+  };
+
+  return NextResponse.json({ ok: true, config, previousConfig, changes, secretStatus }, { status: 200 });
 }
 
 export async function POST(request: Request) {

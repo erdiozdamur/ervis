@@ -1,5 +1,6 @@
 import { prisma } from '@/db/prisma';
 import { Prisma } from '@prisma/client';
+import { redactSecrets } from '@/lib/security/redact-secrets';
 
 type AdminAuditInput = {
   actorId: string;
@@ -19,7 +20,11 @@ function normalizeAuditJson(
     return Prisma.JsonNull;
   }
 
-  return value;
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return redactSecrets(value);
 }
 
 function extractIp(request: Request): string | null {
